@@ -6,6 +6,7 @@ use crate::theme::GruvboxTheme;
 
 /// 10 top entries + 1 separator ("...") + 1 player entry = 12 slots
 const MAX_SLOTS: usize = 12;
+const CROWN_SIZE: f32 = 14.0;
 
 #[derive(Component)]
 struct LeaderboardRoot;
@@ -15,17 +16,43 @@ struct LeaderboardSlot {
   index: usize,
 }
 
+/// Crown icon within a leaderboard row.
+#[derive(Component)]
+struct CrownIcon {
+  index: usize,
+}
+
+/// Text portion of a leaderboard row.
+#[derive(Component)]
+struct SlotText {
+  index: usize,
+}
+
+/// Pre-loaded crown texture.
+#[derive(Resource)]
+struct CrownTexture(Handle<Image>);
+
 pub(crate) struct LeaderboardPlugin;
 
 impl Plugin for LeaderboardPlugin {
   fn build(&self, app: &mut App) {
     app
+      .add_systems(PreStartup, load_crown)
       .add_systems(Startup, spawn_leaderboard)
       .add_systems(Update, update_leaderboard);
   }
 }
 
-fn spawn_leaderboard(mut commands: Commands, theme: Res<GruvboxTheme>, fonts: Res<GameFonts>) {
+fn load_crown(mut commands: Commands, asset_server: Res<AssetServer>) {
+  commands.insert_resource(CrownTexture(asset_server.load("textures/crown.png")));
+}
+
+fn spawn_leaderboard(
+  mut commands: Commands,
+  theme: Res<GruvboxTheme>,
+  fonts: Res<GameFonts>,
+  crown_tex: Res<CrownTexture>,
+) {
   commands
     .spawn((
       Node {
@@ -50,36 +77,61 @@ fn spawn_leaderboard(mut commands: Commands, theme: Res<GruvboxTheme>, fonts: Re
         TextColor(theme.yellow),
       ));
 
-      // Slots (reusable each frame)
+      // Each slot is a row: [crown_img] [text]
       for i in 0..MAX_SLOTS {
-        parent.spawn((
-          Text::new(""),
-          TextFont {
-            font: fonts.regular.clone(),
-            font_size: 11.0,
-            ..default()
-          },
-          TextColor(theme.fg),
-          Visibility::Hidden,
-          LeaderboardSlot { index: i },
-        ));
+        parent
+          .spawn((
+            Node {
+              flex_direction: FlexDirection::Row,
+              align_items: AlignItems::Center,
+              column_gap: Val::Px(2.0),
+              height: Val::Px(14.0),
+              ..default()
+            },
+            LeaderboardSlot { index: i },
+            Visibility::Hidden,
+          ))
+          .with_children(|row| {
+            // Crown icon (hidden by default)
+            row.spawn((
+              ImageNode {
+                image: crown_tex.0.clone(),
+                ..default()
+              },
+              Node {
+                width: Val::Px(CROWN_SIZE),
+                height: Val::Px(CROWN_SIZE),
+                ..default()
+              },
+              Visibility::Hidden,
+              CrownIcon { index: i },
+            ));
+
+            // Text
+            row.spawn((
+              Text::new(""),
+              TextFont {
+                font: fonts.regular.clone(),
+                font_size: 11.0,
+                ..default()
+              },
+              TextColor(theme.fg),
+              SlotText { index: i },
+            ));
+          });
       }
     });
-}
-
-/// A single leaderboard display line.
-struct DisplayLine {
-  text: String,
-  color: Color,
 }
 
 fn update_leaderboard(
   world: Option<Res<GameWorld>>,
   theme: Res<GruvboxTheme>,
-  mut slots: Query<(&LeaderboardSlot, &mut Text, &mut TextColor, &mut Visibility)>,
+  mut slots: Query<(&LeaderboardSlot, &mut Visibility)>,
+  mut texts: Query<(&SlotText, &mut Text, &mut TextColor)>,
+  mut crowns: Query<(&CrownIcon, &mut Visibility), Without<LeaderboardSlot>>,
 ) {
   let Some(world) = world else {
-    for (_, _, _, mut vis) in &mut slots {
+    for (_, mut vis) in &mut slots {
       *vis = Visibility::Hidden;
     }
     return;
@@ -98,20 +150,17 @@ fn update_leaderboard(
   }
   worms.sort_by(|a, b| b.1.cmp(&a.1));
 
-  // Find player's rank (1-based)
   let player_rank = worms.iter().position(|w| w.2).map(|i| i + 1);
   let player_in_top10 = player_rank.map_or(false, |r| r <= 10);
 
-  // Build display lines
-  let mut lines: Vec<DisplayLine> = Vec::with_capacity(MAX_SLOTS);
+  // Build display lines: (text, color, show_crown)
+  let mut lines: Vec<(String, Color, bool)> = Vec::with_capacity(MAX_SLOTS);
 
-  // Top 10
   let top_count = worms.len().min(10);
   for i in 0..top_count {
     let (name, score, is_player) = worms[i];
     let rank = i + 1;
-    let king = if rank == 1 { "K" } else { " " };
-    let ptr = if is_player { ">" } else { " " };
+    let ptr = if is_player { "> " } else { "  " };
     let color = if is_player {
       theme.green
     } else if rank == 1 {
@@ -119,36 +168,46 @@ fn update_leaderboard(
     } else {
       theme.fg.with_alpha(0.7)
     };
-    lines.push(DisplayLine {
-      text: format!("{}{}{:>2} {:<10} {}", ptr, king, rank, name, score),
+    lines.push((
+      format!("{}{:>2} {:<10} {}", ptr, rank, name, score),
       color,
-    });
+      rank == 1,
+    ));
   }
 
-  // If player is NOT in top 10, append separator + player line
   if !player_in_top10 {
     if let Some(rank) = player_rank {
-      lines.push(DisplayLine {
-        text: "  ...".to_string(),
-        color: theme.gray,
-      });
-      let score = player.score();
-      lines.push(DisplayLine {
-        text: format!("> {:>2} {:<10} {}", rank, player.name(), score),
-        color: theme.green,
-      });
+      lines.push(("  ...".to_string(), theme.gray, false));
+      lines.push((
+        format!("> {:>3} {:<10} {}", rank, player.name(), player.score()),
+        theme.green,
+        false,
+      ));
     }
   }
 
   // Apply to slots
-  for (slot, mut text, mut color, mut vis) in &mut slots {
-    if slot.index < lines.len() {
-      let line = &lines[slot.index];
-      **text = line.text.clone();
-      color.0 = line.color;
-      *vis = Visibility::Inherited;
+  for (slot, mut vis) in &mut slots {
+    *vis = if slot.index < lines.len() {
+      Visibility::Inherited
     } else {
-      *vis = Visibility::Hidden;
+      Visibility::Hidden
+    };
+  }
+
+  for (st, mut text, mut color) in &mut texts {
+    if st.index < lines.len() {
+      let (ref line, c, _) = lines[st.index];
+      **text = line.clone();
+      color.0 = c;
     }
+  }
+
+  for (ci, mut vis) in &mut crowns {
+    *vis = if ci.index < lines.len() && lines[ci.index].2 {
+      Visibility::Inherited
+    } else {
+      Visibility::Hidden
+    };
   }
 }

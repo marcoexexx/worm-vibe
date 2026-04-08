@@ -21,9 +21,13 @@ struct MinimapDot {
   index: usize,
 }
 
-/// Arrow on screen pointing toward the #1 worm.
+/// Container for king direction indicator.
 #[derive(Component)]
 struct TopWormArrow;
+
+/// Text child of the king direction indicator.
+#[derive(Component)]
+struct KingArrowText;
 
 pub(crate) struct MinimapPlugin;
 
@@ -35,7 +39,7 @@ impl Plugin for MinimapPlugin {
   }
 }
 
-fn spawn_minimap_frame(mut commands: Commands, theme: Res<GruvboxTheme>, fonts: Res<GameFonts>) {
+fn spawn_minimap_frame(mut commands: Commands, theme: Res<GruvboxTheme>, fonts: Res<GameFonts>, asset_server: Res<AssetServer>) {
   // Minimap container
   commands
     .spawn((
@@ -89,23 +93,46 @@ fn spawn_minimap_frame(mut commands: Commands, theme: Res<GruvboxTheme>, fonts: 
       }
     });
 
-  // Direction arrow
-  commands.spawn((
-    Text::new(""),
-    TextFont {
-      font: fonts.bold.clone(),
-      font_size: 16.0,
-      ..default()
-    },
-    TextColor(theme.red),
-    Node {
-      position_type: PositionType::Absolute,
-      top: Val::Px(40.0),
-      right: Val::Px(MINIMAP_MARGIN + MINIMAP_SIZE + 8.0),
-      ..default()
-    },
-    TopWormArrow,
-  ));
+  // King direction indicator: [crown_img] [text]
+  let crown_tex: Handle<Image> = asset_server.load("textures/crown.png");
+  commands
+    .spawn((
+      Node {
+        position_type: PositionType::Absolute,
+        top: Val::Px(40.0),
+        right: Val::Px(MINIMAP_MARGIN + MINIMAP_SIZE + 8.0),
+        flex_direction: FlexDirection::Row,
+        align_items: AlignItems::Center,
+        column_gap: Val::Px(4.0),
+        ..default()
+      },
+      TopWormArrow,
+    ))
+    .with_children(|row| {
+      // Crown image
+      row.spawn((
+        ImageNode {
+          image: crown_tex,
+          ..default()
+        },
+        Node {
+          width: Val::Px(20.0),
+          height: Val::Px(20.0),
+          ..default()
+        },
+      ));
+      // Direction text
+      row.spawn((
+        Text::new(""),
+        TextFont {
+          font: fonts.bold.clone(),
+          font_size: 16.0,
+          ..default()
+        },
+        TextColor(theme.yellow),
+        KingArrowText,
+      ));
+    });
 }
 
 fn update_minimap(
@@ -189,9 +216,13 @@ fn update_minimap(
 
 fn update_top_arrow(
   world: Option<Res<GameWorld>>,
-  mut arrow_q: Query<(&mut Text, &mut Visibility), With<TopWormArrow>>,
+  mut container_q: Query<&mut Visibility, With<TopWormArrow>>,
+  mut text_q: Query<&mut Text, With<KingArrowText>>,
 ) {
-  let Ok((mut text, mut vis)) = arrow_q.get_single_mut() else {
+  let Ok(mut vis) = container_q.get_single_mut() else {
+    return;
+  };
+  let Ok(mut text) = text_q.get_single_mut() else {
     return;
   };
 
@@ -219,7 +250,7 @@ fn update_top_arrow(
   }
 
   if top1_id == world.player().id() {
-    **text = "[K] YOU ARE #1".to_string();
+    **text = "YOU ARE #1".to_string();
     *vis = Visibility::Visible;
     return;
   }
@@ -229,7 +260,7 @@ fn update_top_arrow(
   let dist = delta.length();
   let arrow = direction_arrow(delta);
 
-  **text = format!("[K] {} ({:.0}m) {}", arrow, dist / 10.0, top1_score);
+  **text = format!("{} ({:.0}m) {}", arrow, dist / 10.0, top1_score);
   *vis = Visibility::Visible;
 }
 
