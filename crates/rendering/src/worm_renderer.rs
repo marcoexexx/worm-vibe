@@ -37,6 +37,10 @@ struct WormNameRegistry {
   entities: HashMap<WormId, Entity>,
 }
 
+/// World-space crown sprite floating above the king's head.
+#[derive(Component)]
+struct KingCrownSprite;
+
 /// Culling radius — worms beyond this distance from camera are not rendered.
 const CULL_RADIUS: f32 = 2000.0;
 
@@ -48,7 +52,7 @@ impl Plugin for WormRendererPlugin {
       .init_resource::<WormSpriteRegistry>()
       .init_resource::<WormNameRegistry>()
       .add_systems(PreStartup, load_worm_textures)
-      .add_systems(Update, (sync_worm_sprites, sync_worm_names));
+      .add_systems(Update, (sync_worm_sprites, sync_worm_names, sync_king_crown));
   }
 }
 
@@ -294,10 +298,65 @@ fn sync_worm_names(
   }
 }
 
-/// Format worm label: "#N name" for top 10, just "name" otherwise.
+/// Format worm label: "#N name" for top 10.
 fn format_worm_label(name: &str, rank: Option<&usize>) -> String {
   match rank {
     Some(r) => format!("#{} {}", r, name),
     None => name.to_string(),
+  }
+}
+
+/// Spawn or move a single crown sprite above the king worm's head.
+fn sync_king_crown(
+  mut commands: Commands,
+  world: Option<Res<GameWorld>>,
+  asset_server: Res<AssetServer>,
+  mut crown_q: Query<(Entity, &mut Transform, &mut Visibility), With<KingCrownSprite>>,
+) {
+  let Some(world) = world else {
+    for (_, _, mut vis) in &mut crown_q {
+      *vis = Visibility::Hidden;
+    }
+    return;
+  };
+
+  // Find king (longest alive worm)
+  let mut king_pos: Option<glam::Vec2> = None;
+  let mut king_len = 0usize;
+  if world.player().is_alive() {
+    king_len = world.player().length();
+    king_pos = Some(world.player().head_position());
+  }
+  for (worm, _) in world.ai_worms() {
+    if worm.is_alive() && worm.length() > king_len {
+      king_len = worm.length();
+      king_pos = Some(worm.head_position());
+    }
+  }
+
+  let Some(pos) = king_pos else {
+    for (_, _, mut vis) in &mut crown_q {
+      *vis = Visibility::Hidden;
+    }
+    return;
+  };
+
+  // Crown floats above the name label (which is at +24, crown at +40)
+  let crown_pos = Vec3::new(pos.x, pos.y + 40.0, 25.0);
+
+  if let Ok((_, mut transform, mut vis)) = crown_q.get_single_mut() {
+    transform.translation = crown_pos;
+    *vis = Visibility::Inherited;
+  } else {
+    // Spawn crown entity (once)
+    commands.spawn((
+      Sprite {
+        image: asset_server.load("textures/crown.png"),
+        custom_size: Some(Vec2::new(24.0, 24.0)),
+        ..default()
+      },
+      Transform::from_translation(crown_pos),
+      KingCrownSprite,
+    ));
   }
 }
