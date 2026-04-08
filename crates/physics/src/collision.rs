@@ -36,26 +36,22 @@ mod tests {
   #[test]
   fn overlap_touching_circles() {
     // Two circles with combined radius 20, distance 19 — overlapping
-    assert!(check_circle_overlap(
-      Vec2::ZERO, 10.0,
-      Vec2::new(19.0, 0.0), 10.0
-    ));
+    assert!(check_circle_overlap(Vec2::ZERO, 10.0, Vec2::new(19.0, 0.0), 10.0));
   }
 
   #[test]
   fn no_overlap_separated_circles() {
     // Distance 25 > combined radius 20
-    assert!(!check_circle_overlap(
-      Vec2::ZERO, 10.0,
-      Vec2::new(25.0, 0.0), 10.0
-    ));
+    assert!(!check_circle_overlap(Vec2::ZERO, 10.0, Vec2::new(25.0, 0.0), 10.0));
   }
 
   #[test]
   fn overlap_concentric_circles() {
     assert!(check_circle_overlap(
-      Vec2::new(5.0, 5.0), 10.0,
-      Vec2::new(5.0, 5.0), 3.0
+      Vec2::new(5.0, 5.0),
+      10.0,
+      Vec2::new(5.0, 5.0),
+      3.0
     ));
   }
 
@@ -63,10 +59,7 @@ mod tests {
   fn overlap_barely_touching() {
     // Exactly at boundary — distance = combined radius
     // distance_squared < combined² is false when equal
-    assert!(!check_circle_overlap(
-      Vec2::ZERO, 5.0,
-      Vec2::new(10.0, 0.0), 5.0
-    ));
+    assert!(!check_circle_overlap(Vec2::ZERO, 5.0, Vec2::new(10.0, 0.0), 5.0));
   }
 
   #[test]

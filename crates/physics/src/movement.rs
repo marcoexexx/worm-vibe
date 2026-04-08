@@ -100,7 +100,12 @@ mod tests {
     // Very high follow speed, should get close to target distance
     let result = follow_segment(leader, follower, spacing, 100.0, 1.0);
     let dist = result.distance(leader);
-    assert!((dist - spacing).abs() < 1.0, "dist={} should be near spacing={}", dist, spacing);
+    assert!(
+      (dist - spacing).abs() < 1.0,
+      "dist={} should be near spacing={}",
+      dist,
+      spacing
+    );
   }
 
   #[test]

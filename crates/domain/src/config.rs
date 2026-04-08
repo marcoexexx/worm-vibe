@@ -60,14 +60,6 @@ pub struct FoodConfig {
   pub radius: f32,
   pub max_spawn_per_tick: usize,
   pub death_drop_jitter: f32,
-  // Spawn probabilities (normal spawning)
-  pub spawn_donut_chance: f32,
-  pub spawn_cookie_chance: f32,
-  // Death drop thresholds (worm length brackets)
-  pub death_tiny_max: usize,
-  pub death_small_max: usize,
-  pub death_medium_max: usize,
-  // Magnetic pull
   pub magnet_range_multiplier: f32,
   pub magnet_pull_speed: f32,
 }
@@ -78,11 +70,6 @@ impl Default for FoodConfig {
       radius: 11.0,
       max_spawn_per_tick: 10,
       death_drop_jitter: 6.0,
-      spawn_donut_chance: 0.60,
-      spawn_cookie_chance: 0.90, // cookie = 0.90 - 0.60 = 30%, cherry = 10%
-      death_tiny_max: 10,
-      death_small_max: 30,
-      death_medium_max: 60,
       magnet_range_multiplier: 6.0,
       magnet_pull_speed: 500.0,
     }
@@ -96,10 +83,8 @@ impl Default for FoodConfig {
 #[derive(Debug, Clone)]
 pub struct CollisionConfig {
   pub grid_cell_size: f32,
-  pub self_segment_skip: usize,
   pub other_segment_skip: usize,
   pub spawn_edge_margin: f32,
-  pub direction_threshold: f32,
   /// Shrink factor for worm-vs-worm collision radii (0.0–1.0).
   /// Visual sprites are larger than hitboxes so collisions feel fair.
   pub worm_hitbox_shrink: f32,
@@ -109,10 +94,8 @@ impl Default for CollisionConfig {
   fn default() -> Self {
     Self {
       grid_cell_size: 60.0,
-      self_segment_skip: 8,
       other_segment_skip: 2,
       spawn_edge_margin: 200.0,
-      direction_threshold: 0.1,
       worm_hitbox_shrink: 0.75,
     }
   }
@@ -438,11 +421,12 @@ mod tests {
   }
 
   #[test]
-  fn food_config_probabilities_are_valid() {
+  fn food_config_defaults_are_sane() {
     let cfg = FoodConfig::default();
-    assert!(cfg.spawn_donut_chance > 0.0 && cfg.spawn_donut_chance < 1.0);
-    assert!(cfg.spawn_cookie_chance > cfg.spawn_donut_chance);
-    assert!(cfg.spawn_cookie_chance <= 1.0);
+    assert!(cfg.radius > 0.0);
+    assert!(cfg.max_spawn_per_tick > 0);
+    assert!(cfg.magnet_range_multiplier > 1.0);
+    assert!(cfg.magnet_pull_speed > 0.0);
   }
 
   #[test]

@@ -37,6 +37,9 @@ struct WormNameRegistry {
   entities: HashMap<WormId, Entity>,
 }
 
+/// Culling radius — worms beyond this distance from camera are not rendered.
+const CULL_RADIUS: f32 = 2000.0;
+
 pub(crate) struct WormRendererPlugin;
 
 impl Plugin for WormRendererPlugin {
@@ -80,6 +83,7 @@ fn sync_worm_sprites(
   mut registry: ResMut<WormSpriteRegistry>,
   mut sprite_q: Query<(&mut Transform, &mut Sprite)>,
   textures: Option<Res<WormTextures>>,
+  camera_q: Query<&Transform, (With<Camera2d>, Without<Sprite>)>,
   theme: Res<GruvboxTheme>,
 ) {
   let Some(world) = world else { return };
@@ -88,53 +92,44 @@ fn sync_worm_sprites(
     None => return,
   };
 
+  // Get camera center for frustum culling
+  let cam_pos = camera_q
+    .get_single()
+    .map(|t| t.translation.truncate())
+    .unwrap_or_default();
+  let cull_sq = CULL_RADIUS * CULL_RADIUS;
+
   let mut live_keys: HashMap<(WormId, usize), WormVisual> = HashMap::new();
 
-  // Player
+  // Player — always render (never cull yourself)
   let player = world.player();
   if player.is_alive() {
-    for (i, seg) in player.segments().iter().enumerate() {
-      let z = if i == 0 { 5.0 } else { 4.0 };
-      let size = if i == 0 { seg.radius() * 2.8 } else { seg.radius() * 2.2 };
-      let texture = if i == 0 {
-        textures.player_head.clone()
-      } else {
-        textures.player_segment.clone()
-      };
-      live_keys.insert(
-        (player.id(), i),
-        WormVisual {
-          pos: seg.position().extend(z),
-          size,
-          texture,
-        },
-      );
-    }
+    add_worm_visuals(
+      &mut live_keys,
+      player,
+      &textures.player_head,
+      &textures.player_segment,
+      true,
+    );
   }
 
-  // AI worms
+  // AI worms — cull if head is far from camera
   for (idx, (worm, _)) in world.ai_worms().iter().enumerate() {
     if !worm.is_alive() {
       continue;
     }
-    let tex_idx = idx % textures.heads.len();
-    for (i, seg) in worm.segments().iter().enumerate() {
-      let z = if i == 0 { 3.0 } else { 2.0 };
-      let size = if i == 0 { seg.radius() * 2.8 } else { seg.radius() * 2.2 };
-      let texture = if i == 0 {
-        textures.heads[tex_idx].clone()
-      } else {
-        textures.segments[tex_idx].clone()
-      };
-      live_keys.insert(
-        (worm.id(), i),
-        WormVisual {
-          pos: seg.position().extend(z),
-          size,
-          texture,
-        },
-      );
+    // Frustum cull: skip worms whose head is too far from camera
+    if worm.head_position().distance_squared(cam_pos) > cull_sq {
+      continue;
     }
+    let tex_idx = idx % textures.heads.len();
+    add_worm_visuals(
+      &mut live_keys,
+      worm,
+      &textures.heads[tex_idx],
+      &textures.segments[tex_idx],
+      false,
+    );
   }
 
   // Remove dead entities
@@ -152,7 +147,6 @@ fn sync_worm_sprites(
     if let Some(entity) = registry.entities.get(key) {
       if let Ok((mut transform, mut sprite)) = sprite_q.get_mut(*entity) {
         transform.translation = visual.pos;
-        // Update size — worms grow wider over time
         sprite.custom_size = Some(Vec2::splat(visual.size));
       }
     } else {
@@ -174,8 +168,33 @@ fn sync_worm_sprites(
     }
   }
 
-  // Keep theme reference alive to suppress unused warning
   let _ = &theme;
+}
+
+/// Add all segment visuals for a single worm to the live_keys map.
+fn add_worm_visuals(
+  live_keys: &mut HashMap<(WormId, usize), WormVisual>,
+  worm: &domain::Worm,
+  head_tex: &Handle<Image>,
+  seg_tex: &Handle<Image>,
+  is_player: bool,
+) {
+  let z_head = if is_player { 5.0 } else { 3.0 };
+  let z_seg = if is_player { 4.0 } else { 2.0 };
+
+  for (i, seg) in worm.segments().iter().enumerate() {
+    let z = if i == 0 { z_head } else { z_seg };
+    let size = if i == 0 { seg.radius() * 2.8 } else { seg.radius() * 2.2 };
+    let texture = if i == 0 { head_tex.clone() } else { seg_tex.clone() };
+    live_keys.insert(
+      (worm.id(), i),
+      WormVisual {
+        pos: seg.position().extend(z),
+        size,
+        texture,
+      },
+    );
+  }
 }
 
 fn sync_worm_names(
@@ -185,8 +204,15 @@ fn sync_worm_names(
   mut labels: Query<(&mut Transform, &mut Text2d, &mut TextColor), With<WormNameLabel>>,
   theme: Res<GruvboxTheme>,
   fonts: Res<crate::fonts::GameFonts>,
+  camera_q: Query<&Transform, (With<Camera2d>, Without<WormNameLabel>)>,
 ) {
   let Some(world) = world else { return };
+
+  let cam_pos = camera_q
+    .get_single()
+    .map(|t| t.translation.truncate())
+    .unwrap_or_default();
+  let cull_sq = CULL_RADIUS * CULL_RADIUS;
 
   // Build ranking: sort all alive worms by length descending
   let mut ranked: Vec<(WormId, usize)> = Vec::new();
@@ -200,7 +226,6 @@ fn sync_worm_names(
   }
   ranked.sort_by(|a, b| b.1.cmp(&a.1));
 
-  // Map worm_id → rank (1-based), only for top 10
   let mut rank_map: HashMap<WormId, usize> = HashMap::new();
   for (i, (id, _)) in ranked.iter().enumerate() {
     if i < 10 {
@@ -208,7 +233,7 @@ fn sync_worm_names(
     }
   }
 
-  // Collect live worm IDs and their display info
+  // Collect visible worms
   let mut live: HashMap<WormId, (Vec2, String, Color)> = HashMap::new();
 
   let player = world.player();
@@ -219,6 +244,10 @@ fn sync_worm_names(
 
   for (idx, (worm, _)) in world.ai_worms().iter().enumerate() {
     if !worm.is_alive() {
+      continue;
+    }
+    // Cull distant worm labels
+    if worm.head_position().distance_squared(cam_pos) > cull_sq {
       continue;
     }
     let label = format_worm_label(worm.name(), rank_map.get(&worm.id()));

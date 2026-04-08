@@ -59,11 +59,7 @@ fn ai_worms_not_at_center() {
   let world = easy_world();
   for (worm, _) in world.ai_worms() {
     let dist = worm.head_position().distance(Vec2::ZERO);
-    assert!(
-      dist > 100.0,
-      "AI worm should spawn away from center, got dist={}",
-      dist
-    );
+    assert!(dist > 100.0, "AI worm should spawn away from center, got dist={}", dist);
   }
 }
 
@@ -104,11 +100,7 @@ fn tick_with_direction_turns_player() {
   // Player should be heading roughly upward
   let heading = world.player().heading();
   // heading should be closer to PI/2 than 0
-  assert!(
-    heading.abs() > 0.1,
-    "player should have turned, heading={}",
-    heading
-  );
+  assert!(heading.abs() > 0.1, "player should have turned, heading={}", heading);
 }
 
 #[test]
@@ -160,10 +152,7 @@ fn tick_returns_events() {
     .iter()
     .filter(|e| matches!(e, DomainEvent::FoodEaten { .. }))
     .count();
-  assert!(
-    food_eaten > 0,
-    "expected some FoodEaten events over 300 frames"
-  );
+  assert!(food_eaten > 0, "expected some FoodEaten events over 300 frames");
 }
 
 // ============================================================================
@@ -229,11 +218,7 @@ fn cheat_noclip_activates() {
 
 #[test]
 fn all_presets_create_valid_worlds() {
-  for preset in [
-    DifficultyPreset::Easy,
-    DifficultyPreset::Normal,
-    DifficultyPreset::Hard,
-  ] {
+  for preset in [DifficultyPreset::Easy, DifficultyPreset::Normal, DifficultyPreset::Hard] {
     let world = GameWorld::new(GameConfig::from_preset(preset));
     assert!(world.player().is_alive());
     assert!(!world.foods().is_empty());

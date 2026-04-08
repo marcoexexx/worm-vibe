@@ -41,9 +41,8 @@ impl FoodKind {
 
   pub fn growth(self) -> usize {
     match self {
-      Self::Donut | Self::Banana | Self::Grape => 1,
-      Self::Cookie | Self::Apple | Self::Strawberry | Self::Watermelon => 1,
       Self::Cherry => 2,
+      _ => 1,
     }
   }
 }

@@ -11,6 +11,10 @@ use crate::collision_service;
 use crate::food_service;
 use crate::worm_service;
 
+// ============================================================================
+// GameWorld
+// ============================================================================
+
 #[derive(Resource)]
 pub struct GameWorld {
   config: GameConfig,
@@ -29,7 +33,6 @@ impl GameWorld {
     let player_id = WormId::new(0);
     let mut player = Worm::spawn(player_id, Vec2::ZERO, 0.0, config.initial_worm_length(), config.worm());
     player.set_name("You".to_string());
-    // Spawn protection: brief invincibility so the player can't die instantly
     player.apply_invincibility(2.0);
 
     let half = config.arena().half_extents();
@@ -37,17 +40,9 @@ impl GameWorld {
     let mut ai_worms = Vec::with_capacity(ai_count);
     for i in 1..=ai_count {
       let id = WormId::new(i as u64);
-      let worm = worm_service::spawn_at_random_edge(
-        id,
-        half,
-        config.initial_worm_length(),
-        config.worm(),
-        config.collision(),
-        &mut rng,
-      );
-      let difficulty = config.ai_difficulty_for(i - 1);
-      let mut worm = worm;
+      let mut worm = spawn_ai_worm(id, half, &config, &mut rng);
       worm.set_name(random_bot_name(&mut rng));
+      let difficulty = config.ai_difficulty_for(i - 1);
       ai_worms.push((worm, BasicAiBrain::with_difficulty(difficulty)));
     }
 
@@ -66,33 +61,25 @@ impl GameWorld {
     }
   }
 
-  // --- Public accessors ---
-
   pub fn player(&self) -> &Worm {
     &self.player
   }
-
   pub fn ai_worms(&self) -> &[(Worm, BasicAiBrain)] {
     &self.ai_worms
   }
-
   pub fn foods(&self) -> &[Food] {
     &self.foods
   }
-
   pub fn config(&self) -> &GameConfig {
     &self.config
   }
-
   pub fn elapsed(&self) -> f32 {
     self.elapsed
   }
-
   pub fn active_cheats(&self) -> &[ActiveCheat] {
     &self.active_cheats
   }
 
-  /// Activate a cheat by effect.
   pub fn activate_cheat(&mut self, effect: CheatEffect) {
     cheat_service::apply(&mut self.player, &effect);
     self.active_cheats.push(ActiveCheat::new(effect));
@@ -105,111 +92,84 @@ impl GameWorld {
   }
 }
 
+// ============================================================================
+// Game tick — main orchestrator
+// ============================================================================
+
 /// Advance the game world by one frame. Returns domain events.
 pub fn tick_game_world(world: &mut GameWorld, intent: MovementIntent, dt: f32) -> Vec<DomainEvent> {
   let mut events = Vec::new();
   world.elapsed += dt;
 
-  // --- Timers & cheats ---
+  // Phase 1: Timers & cheats
   world.player.tick_timers(dt);
   cheat_service::expire_cheats(&mut world.player, &mut world.active_cheats, dt);
 
-  // --- Player movement ---
+  // Phase 2: Movement (player + AI)
+  tick_player_movement(world, &intent, dt, &mut events);
+  tick_ai_worms(world, dt);
+
+  // Phase 3: Collision detection & processing
+  process_collisions(world, &mut events);
+
+  // Phase 4: Food magnet
+  apply_food_magnet(world, dt);
+
+  // Phase 5: Respawn & replenish
+  respawn_and_replenish(world);
+
+  events
+}
+
+// ============================================================================
+// Phase helpers
+// ============================================================================
+
+fn tick_player_movement(world: &mut GameWorld, intent: &MovementIntent, dt: f32, events: &mut Vec<DomainEvent>) {
   let turn_rate = world.config.turn_rate();
-  let segment_spacing = world.config.worm().segment_follow_spacing;
-  let follow_speed = world.config.worm().follow_speed;
+  let spacing = world.config.worm().segment_follow_spacing;
+  let follow_spd = world.config.worm().follow_speed;
+
   move_worm(
     &mut world.player,
     intent.target_heading(),
     turn_rate,
-    segment_spacing,
-    follow_speed,
+    spacing,
+    follow_spd,
     dt,
   );
 
-  // --- Player boost ---
   world.player.set_boosting(intent.wants_boost());
   if world.player.tick_boost_drain(dt) {
     events.push(DomainEvent::BoostStarted {
       worm_id: world.player.id(),
     });
   }
+}
 
-  // --- AI movement ---
-  tick_ai_worms(world, dt);
-
-  // --- Collision detection ---
+fn process_collisions(world: &mut GameWorld, events: &mut Vec<DomainEvent>) {
   let bounds = ArenaBounds::from(world.config.arena());
   let results = collision_service::detect_collisions(
     &world.player,
-    &world.ai_worms.iter().map(|(w, _)| w.clone()).collect::<Vec<_>>(),
+    &world.ai_worms,
     &world.foods,
     &bounds,
     world.config.collision(),
   );
 
-  // Process results
   let mut eaten_food_indices = Vec::new();
   let mut dead_worm_ids = Vec::new();
 
   for result in results {
     match result {
       CollisionResult::WormAteFood { worm_id, food_index } => {
-        if eaten_food_indices.contains(&food_index) {
-          continue;
-        }
-        if let Some(food) = world.foods.get(food_index) {
-          let kind = food.kind();
-          let pos = food.position();
-
-          if let Some(worm) = find_worm_mut(world, worm_id) {
-            worm.add_score(kind.score_value());
-            worm.grow(kind.growth());
-            events.push(DomainEvent::FoodEaten {
-              worm_id,
-              position: pos,
-              kind,
-              new_score: worm.score(),
-            });
-          }
-          eaten_food_indices.push(food_index);
-        }
+        process_food_eaten(world, worm_id, food_index, &mut eaten_food_indices, events);
       }
-      CollisionResult::WormHitWorm { victim, killer: _ } => {
-        if let Some(worm) = find_worm_ref(world, victim) {
-          if worm.is_invincible() {
-            continue;
-          }
-        }
-        if !dead_worm_ids.contains(&victim) {
-          dead_worm_ids.push(victim);
-          if let Some(worm) = find_worm_ref(world, victim) {
-            events.push(DomainEvent::WormDied {
-              worm_id: victim,
-              position: worm.head_position(),
-              final_score: worm.score(),
-              segments_dropped: worm.length(),
-            });
-          }
-        }
+      CollisionResult::WormHitWorm { victim, .. } => {
+        try_register_death(world, victim, &mut dead_worm_ids, events);
       }
       CollisionResult::WormHitBoundary { worm_id } => {
-        if let Some(worm) = find_worm_ref(world, worm_id) {
-          if worm.is_invincible() {
-            continue;
-          }
-        }
-        if !dead_worm_ids.contains(&worm_id) {
-          dead_worm_ids.push(worm_id);
-          if let Some(worm) = find_worm_ref(world, worm_id) {
-            events.push(DomainEvent::WormDied {
-              worm_id,
-              position: worm.head_position(),
-              final_score: worm.score(),
-              segments_dropped: worm.length(),
-            });
-          }
-        }
+        try_register_death(world, worm_id, &mut dead_worm_ids, events);
       }
     }
   }
@@ -223,52 +183,30 @@ pub fn tick_game_world(world: &mut GameWorld, intent: MovementIntent, dt: f32) -
     }
   }
 
-  // Kill dead worms, drop food from their segments
+  // Drop food from dead worms, then kill them
   for worm_id in &dead_worm_ids {
-    let (positions, worm_radius) = collect_segment_info(world, *worm_id);
-    let dropped = food_service::drop_from_segments(&positions, worm_radius, world.config.food(), &mut world.rng);
+    let (positions, radius) = collect_segment_info(world, *worm_id);
+    let dropped = food_service::drop_from_segments(&positions, radius, world.config.food(), &mut world.rng);
     world.foods.extend(dropped);
   }
-
   for worm_id in &dead_worm_ids {
     kill_worm(world, *worm_id);
   }
+}
 
-  // Food magnet: move food slightly toward worm heads when within 2x food radius
-  apply_food_magnet(world, dt);
-
-  // Respawn AI worms (ensure minimum distance from player)
+fn respawn_and_replenish(world: &mut GameWorld) {
   let half = world.config.arena().half_extents();
-  let target_ai = world.config.arena().max_ai_worms();
   let player_pos = world.player.head_position();
-  let min_spawn_dist = 400.0; // minimum distance from player head
+  let min_spawn_dist = 400.0;
+
+  // Respawn dead AI worms
+  let target_ai = world.config.arena().max_ai_worms();
   while world.ai_worms.len() < target_ai {
     let idx = world.ai_worms.len();
     let id = world.allocate_worm_id();
-    let mut worm = worm_service::spawn_at_random_edge(
-      id,
-      half,
-      world.config.initial_worm_length(),
-      world.config.worm(),
-      world.config.collision(),
-      &mut world.rng,
-    );
-    // Re-roll position if too close to player (max 5 attempts)
-    for _ in 0..5 {
-      if worm.head_position().distance(player_pos) >= min_spawn_dist {
-        break;
-      }
-      worm = worm_service::spawn_at_random_edge(
-        id,
-        half,
-        world.config.initial_worm_length(),
-        world.config.worm(),
-        world.config.collision(),
-        &mut world.rng,
-      );
-    }
-    let difficulty = world.config.ai_difficulty_for(idx);
+    let mut worm = spawn_ai_worm_safe(id, half, player_pos, min_spawn_dist, &world.config, &mut world.rng);
     worm.set_name(random_bot_name(&mut world.rng));
+    let difficulty = world.config.ai_difficulty_for(idx);
     world.ai_worms.push((worm, BasicAiBrain::with_difficulty(difficulty)));
   }
 
@@ -280,78 +218,116 @@ pub fn tick_game_world(world: &mut GameWorld, intent: MovementIntent, dt: f32) -
     let batch = food_service::spawn_batch(half, deficit, world.config.food(), &mut world.rng);
     world.foods.extend(batch);
   }
-
-  events
 }
 
-// --- Private helpers ---
+// ============================================================================
+// Collision result helpers
+// ============================================================================
 
-fn move_worm(
-  worm: &mut Worm,
-  target_heading: Option<f32>,
-  turn_rate: f32,
-  segment_spacing: f32,
-  follow_spd: f32,
-  dt: f32,
+fn process_food_eaten(
+  world: &mut GameWorld,
+  worm_id: WormId,
+  food_index: usize,
+  eaten: &mut Vec<usize>,
+  events: &mut Vec<DomainEvent>,
 ) {
-  // Smooth turning — scale turn rate with length so longer worms turn wider.
-  // Minimum turning radius must exceed the worm body width to prevent self-overlap.
-  // effective_rate = base_rate / (1 + 0.15 * ln(length))
+  if eaten.contains(&food_index) {
+    return;
+  }
+  let Some(food) = world.foods.get(food_index) else {
+    return;
+  };
+  let kind = food.kind();
+  let pos = food.position();
+
+  if let Some(worm) = find_worm_mut(world, worm_id) {
+    worm.add_score(kind.score_value());
+    worm.grow(kind.growth());
+    events.push(DomainEvent::FoodEaten {
+      worm_id,
+      position: pos,
+      kind,
+      new_score: worm.score(),
+    });
+  }
+  eaten.push(food_index);
+}
+
+fn try_register_death(world: &GameWorld, worm_id: WormId, dead: &mut Vec<WormId>, events: &mut Vec<DomainEvent>) {
+  if dead.contains(&worm_id) {
+    return;
+  }
+  if let Some(worm) = find_worm_ref(world, worm_id) {
+    if worm.is_invincible() {
+      return;
+    }
+    dead.push(worm_id);
+    events.push(DomainEvent::WormDied {
+      worm_id,
+      position: worm.head_position(),
+      final_score: worm.score(),
+      segments_dropped: worm.length(),
+    });
+  }
+}
+
+// ============================================================================
+// Worm movement
+// ============================================================================
+
+fn move_worm(worm: &mut Worm, target_heading: Option<f32>, turn_rate: f32, spacing: f32, follow_spd: f32, dt: f32) {
+  // Length-scaled turning: longer worms turn wider
   if let Some(target) = target_heading {
     let length = worm.length().max(1) as f32;
-    let effective_turn_rate = turn_rate / (1.0 + 0.15 * length.ln());
-    let new_heading = smooth_turn(worm.heading(), target, effective_turn_rate, dt);
-    worm.set_heading(new_heading);
+    let effective_rate = turn_rate / (1.0 + 0.15 * length.ln());
+    worm.set_heading(smooth_turn(worm.heading(), target, effective_rate, dt));
   }
 
-  // Acceleration: ramp speed toward target
   worm.tick_acceleration(dt);
 
-  // Move head at current (interpolated) speed
   let new_head = move_head(worm.head_position(), worm.heading(), worm.current_speed(), dt);
   worm.set_head_position(new_head);
 
-  // Follow-the-leader for body segments (smooth curves)
-  let len = worm.segments().len();
-  for i in 1..len {
-    let leader_pos = worm.segments()[i - 1].position();
-    let follower_pos = worm.segments()[i].position();
-    let new_pos = follow_segment(leader_pos, follower_pos, segment_spacing, follow_spd, dt);
+  // Follow-the-leader for body segments
+  for i in 1..worm.segments().len() {
+    let leader = worm.segments()[i - 1].position();
+    let follower = worm.segments()[i].position();
+    let new_pos = follow_segment(leader, follower, spacing, follow_spd, dt);
     if let Some(seg) = worm.segment_mut(i) {
       seg.set_position(new_pos);
     }
   }
 }
 
+// ============================================================================
+// AI
+// ============================================================================
+
 fn tick_ai_worms(world: &mut GameWorld, dt: f32) {
   let half = world.config.arena().half_extents();
   let turn_rate = world.config.turn_rate();
-  let segment_spacing = world.config.worm().segment_follow_spacing;
+  let spacing = world.config.worm().segment_follow_spacing;
   let follow_spd = world.config.worm().follow_speed;
 
   for i in 0..world.ai_worms.len() {
     world.ai_worms[i].1.update(dt);
 
-    // Build perception with per-worm radius
     let (worm, brain) = &world.ai_worms[i];
-    let perception_radius = brain.perception_radius();
     let perception = build_perception(
       worm,
       &world.foods,
       &world.ai_worms,
       &world.player,
       half,
-      perception_radius,
+      brain.perception_radius(),
     );
 
     let decisions = {
       let mut local_rng = StdRng::from_seed(world.rng.gen());
-      let (_, brain) = &mut world.ai_worms[i];
-      brain.decide(&perception, &mut local_rng)
+      world.ai_worms[i].1.decide(&perception, &mut local_rng)
     };
 
-    let mut boost = false;
-    let mut target = None;
+    let (mut boost, mut target) = (false, None);
     for d in &decisions {
       match d {
         AiDecision::TurnTo(h) => target = Some(*h),
@@ -362,38 +338,7 @@ fn tick_ai_worms(world: &mut GameWorld, dt: f32) {
     let (worm, _) = &mut world.ai_worms[i];
     worm.set_boosting(boost);
     worm.tick_boost_drain(dt);
-    move_worm(worm, target, turn_rate, segment_spacing, follow_spd, dt);
-  }
-}
-
-/// Move food items that are within 2x food radius of any worm head toward that head.
-fn apply_food_magnet(world: &mut GameWorld, dt: f32) {
-  let food_cfg = world.config.food();
-  let magnet_range = food_cfg.radius * food_cfg.magnet_range_multiplier;
-  let pull_speed = food_cfg.magnet_pull_speed;
-
-  // Collect all worm head positions
-  let mut heads: Vec<Vec2> = Vec::new();
-  if world.player.is_alive() {
-    heads.push(world.player.head_position());
-  }
-  for (w, _) in &world.ai_worms {
-    if w.is_alive() {
-      heads.push(w.head_position());
-    }
-  }
-
-  for food in &mut world.foods {
-    let food_pos = food.position();
-    for &head in &heads {
-      let dist = food_pos.distance(head);
-      if dist > 0.0 && dist < magnet_range {
-        let dir = (head - food_pos).normalize();
-        let step = (pull_speed * dt).min(dist);
-        food.set_position(food_pos + dir * step);
-        break; // pulled by the nearest head; one head wins
-      }
-    }
+    move_worm(worm, target, turn_rate, spacing, follow_spd, dt);
   }
 }
 
@@ -403,33 +348,30 @@ fn build_perception(
   ai_worms: &[(Worm, BasicAiBrain)],
   player: &Worm,
   half_extents: Vec2,
-  perception_radius: f32,
+  radius: f32,
 ) -> AiPerception {
   let pos = worm.head_position();
+  let radius_sq = radius * radius;
 
   let nearby_food: Vec<_> = foods
     .iter()
-    .filter(|f| f.position().distance(pos) < perception_radius)
+    .filter(|f| f.position().distance_squared(pos) < radius_sq)
     .map(|f| (f.position(), f.kind()))
     .collect();
 
   let mut nearby_worms = Vec::new();
-
-  // Include player
-  if player.is_alive() && player.head_position().distance(pos) < perception_radius {
+  if player.is_alive() && player.head_position().distance_squared(pos) < radius_sq {
     nearby_worms.push(ai::NearbyWorm {
       position: player.head_position(),
       length: player.length(),
       heading: player.heading(),
     });
   }
-
-  // Include other AI worms
   for (other, _) in ai_worms {
     if other.id() == worm.id() || !other.is_alive() {
       continue;
     }
-    if other.head_position().distance(pos) < perception_radius {
+    if other.head_position().distance_squared(pos) < radius_sq {
       nearby_worms.push(ai::NearbyWorm {
         position: other.head_position(),
         length: other.length(),
@@ -448,6 +390,75 @@ fn build_perception(
   }
 }
 
+// ============================================================================
+// Food magnet
+// ============================================================================
+
+fn apply_food_magnet(world: &mut GameWorld, dt: f32) {
+  let cfg = world.config.food();
+  let magnet_range = cfg.radius * cfg.magnet_range_multiplier;
+  let pull_speed = cfg.magnet_pull_speed;
+
+  let mut heads: Vec<Vec2> = Vec::with_capacity(world.ai_worms.len() + 1);
+  if world.player.is_alive() {
+    heads.push(world.player.head_position());
+  }
+  for (w, _) in &world.ai_worms {
+    if w.is_alive() {
+      heads.push(w.head_position());
+    }
+  }
+
+  for food in &mut world.foods {
+    let fpos = food.position();
+    for &head in &heads {
+      let dist = fpos.distance(head);
+      if dist > 0.0 && dist < magnet_range {
+        let step = (pull_speed * dt).min(dist);
+        food.set_position(fpos + (head - fpos).normalize() * step);
+        break;
+      }
+    }
+  }
+}
+
+// ============================================================================
+// Spawn helpers
+// ============================================================================
+
+fn spawn_ai_worm(id: WormId, half: Vec2, config: &GameConfig, rng: &mut impl Rng) -> Worm {
+  worm_service::spawn_at_random_edge(
+    id,
+    half,
+    config.initial_worm_length(),
+    config.worm(),
+    config.collision(),
+    rng,
+  )
+}
+
+fn spawn_ai_worm_safe(
+  id: WormId,
+  half: Vec2,
+  player_pos: Vec2,
+  min_dist: f32,
+  config: &GameConfig,
+  rng: &mut impl Rng,
+) -> Worm {
+  let mut worm = spawn_ai_worm(id, half, config, rng);
+  for _ in 0..5 {
+    if worm.head_position().distance(player_pos) >= min_dist {
+      break;
+    }
+    worm = spawn_ai_worm(id, half, config, rng);
+  }
+  worm
+}
+
+// ============================================================================
+// Worm lookup helpers
+// ============================================================================
+
 fn find_worm_mut(world: &mut GameWorld, id: WormId) -> Option<&mut Worm> {
   if world.player.id() == id {
     return Some(&mut world.player);
@@ -464,11 +475,12 @@ fn find_worm_ref(world: &GameWorld, id: WormId) -> Option<&Worm> {
 
 fn collect_segment_info(world: &GameWorld, id: WormId) -> (Vec<Vec2>, f32) {
   if let Some(worm) = find_worm_ref(world, id) {
-    let positions = worm.segments().iter().map(|s| s.position()).collect();
-    let radius = worm.current_radius();
-    (positions, radius)
+    (
+      worm.segments().iter().map(|s| s.position()).collect(),
+      worm.current_radius(),
+    )
   } else {
-    (Vec::new(), 11.0) // fallback to default food radius
+    (Vec::new(), 11.0)
   }
 }
 
@@ -489,7 +501,9 @@ fn random_bot_name(rng: &mut impl Rng) -> String {
     "3000", "Jr", "X", "Pro", "Bot", "AI", "99", "420", "7", "42", "Lord", "King", "Master", "Ninja", "Guru", "Noob",
     "Chad", "XD", "_dev", ".exe", ".rs", "++", "V2", "Max", "Lite", "HD",
   ];
-  let prefix = PREFIXES[rng.gen_range(0..PREFIXES.len())];
-  let suffix = SUFFIXES[rng.gen_range(0..SUFFIXES.len())];
-  format!("{prefix}{suffix}")
+  format!(
+    "{}{}",
+    PREFIXES[rng.gen_range(0..PREFIXES.len())],
+    SUFFIXES[rng.gen_range(0..SUFFIXES.len())]
+  )
 }
