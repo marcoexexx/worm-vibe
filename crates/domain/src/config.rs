@@ -275,30 +275,17 @@ impl GameConfig {
       DifficultyPreset::Easy => Self {
         arena: ArenaConfig::new(4000.0, 4000.0)
           .with_food_density(0.000008)
-          .with_max_ai_worms(4),
+          .with_max_ai_worms(12),
         initial_worm_length: 5,
         turn_rate: std::f32::consts::PI * 1.2,
         ai_difficulty_mix: vec![
           AiDifficulty::Noob,
           AiDifficulty::Noob,
-          AiDifficulty::Easy,
-          AiDifficulty::Easy,
-        ],
-        worm,
-        food,
-        collision,
-        cheats,
-      },
-      DifficultyPreset::Normal => Self {
-        arena: ArenaConfig::new(5000.0, 5000.0)
-          .with_food_density(0.000006)
-          .with_max_ai_worms(8),
-        initial_worm_length: 3,
-        turn_rate: std::f32::consts::PI * 1.2,
-        ai_difficulty_mix: vec![
           AiDifficulty::Noob,
           AiDifficulty::Easy,
           AiDifficulty::Easy,
+          AiDifficulty::Easy,
+          AiDifficulty::Normal,
           AiDifficulty::Normal,
           AiDifficulty::Normal,
           AiDifficulty::Hard,
@@ -310,16 +297,52 @@ impl GameConfig {
         collision,
         cheats,
       },
+      DifficultyPreset::Normal => Self {
+        arena: ArenaConfig::new(5000.0, 5000.0)
+          .with_food_density(0.000006)
+          .with_max_ai_worms(20),
+        initial_worm_length: 3,
+        turn_rate: std::f32::consts::PI * 1.2,
+        ai_difficulty_mix: vec![
+          AiDifficulty::Noob,
+          AiDifficulty::Noob,
+          AiDifficulty::Easy,
+          AiDifficulty::Easy,
+          AiDifficulty::Easy,
+          AiDifficulty::Normal,
+          AiDifficulty::Normal,
+          AiDifficulty::Normal,
+          AiDifficulty::Normal,
+          AiDifficulty::Hard,
+          AiDifficulty::Hard,
+          AiDifficulty::Hard,
+          AiDifficulty::Hard,
+          AiDifficulty::Hard,
+          AiDifficulty::Ruthless,
+          AiDifficulty::Ruthless,
+          AiDifficulty::Ruthless,
+          AiDifficulty::Ruthless,
+          AiDifficulty::Ruthless,
+          AiDifficulty::Ruthless,
+        ],
+        worm,
+        food,
+        collision,
+        cheats,
+      },
       DifficultyPreset::Hard => Self {
         arena: ArenaConfig::new(6000.0, 6000.0)
           .with_food_density(0.000004)
-          .with_max_ai_worms(12),
+          .with_max_ai_worms(30),
         initial_worm_length: 3,
         turn_rate: std::f32::consts::PI * 1.0,
         ai_difficulty_mix: vec![
           AiDifficulty::Easy,
           AiDifficulty::Normal,
           AiDifficulty::Normal,
+          AiDifficulty::Normal,
+          AiDifficulty::Hard,
+          AiDifficulty::Hard,
           AiDifficulty::Hard,
           AiDifficulty::Hard,
           AiDifficulty::Hard,
@@ -379,21 +402,21 @@ mod tests {
   use super::*;
 
   #[test]
-  fn easy_preset_has_4_ai_worms() {
+  fn easy_preset_has_12_ai_worms() {
     let config = GameConfig::from_preset(DifficultyPreset::Easy);
-    assert_eq!(config.arena().max_ai_worms(), 4);
-  }
-
-  #[test]
-  fn normal_preset_has_8_ai_worms() {
-    let config = GameConfig::from_preset(DifficultyPreset::Normal);
-    assert_eq!(config.arena().max_ai_worms(), 8);
-  }
-
-  #[test]
-  fn hard_preset_has_12_ai_worms() {
-    let config = GameConfig::from_preset(DifficultyPreset::Hard);
     assert_eq!(config.arena().max_ai_worms(), 12);
+  }
+
+  #[test]
+  fn normal_preset_has_20_ai_worms() {
+    let config = GameConfig::from_preset(DifficultyPreset::Normal);
+    assert_eq!(config.arena().max_ai_worms(), 20);
+  }
+
+  #[test]
+  fn hard_preset_has_30_ai_worms() {
+    let config = GameConfig::from_preset(DifficultyPreset::Hard);
+    assert_eq!(config.arena().max_ai_worms(), 30);
   }
 
   #[test]

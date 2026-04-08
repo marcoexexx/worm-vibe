@@ -182,31 +182,48 @@ fn sync_worm_names(
   mut commands: Commands,
   world: Option<Res<GameWorld>>,
   mut name_reg: ResMut<WormNameRegistry>,
-  mut transforms: Query<(&mut Transform, &mut Text2d), With<WormNameLabel>>,
+  mut labels: Query<(&mut Transform, &mut Text2d, &mut TextColor), With<WormNameLabel>>,
   theme: Res<GruvboxTheme>,
   fonts: Res<crate::fonts::GameFonts>,
 ) {
   let Some(world) = world else { return };
 
-  // Collect live worm IDs and their head positions + names
+  // Build ranking: sort all alive worms by length descending
+  let mut ranked: Vec<(WormId, usize)> = Vec::new();
+  if world.player().is_alive() {
+    ranked.push((world.player().id(), world.player().length()));
+  }
+  for (worm, _) in world.ai_worms() {
+    if worm.is_alive() {
+      ranked.push((worm.id(), worm.length()));
+    }
+  }
+  ranked.sort_by(|a, b| b.1.cmp(&a.1));
+
+  // Map worm_id → rank (1-based), only for top 10
+  let mut rank_map: HashMap<WormId, usize> = HashMap::new();
+  for (i, (id, _)) in ranked.iter().enumerate() {
+    if i < 10 {
+      rank_map.insert(*id, i + 1);
+    }
+  }
+
+  // Collect live worm IDs and their display info
   let mut live: HashMap<WormId, (Vec2, String, Color)> = HashMap::new();
 
   let player = world.player();
   if player.is_alive() {
-    live.insert(
-      player.id(),
-      (player.head_position(), player.name().to_string(), theme.green),
-    );
+    let label = format_worm_label(player.name(), rank_map.get(&player.id()));
+    live.insert(player.id(), (player.head_position(), label, theme.green));
   }
 
   for (idx, (worm, _)) in world.ai_worms().iter().enumerate() {
     if !worm.is_alive() {
       continue;
     }
-    live.insert(
-      worm.id(),
-      (worm.head_position(), worm.name().to_string(), theme.worm_color(idx)),
-    );
+    let label = format_worm_label(worm.name(), rank_map.get(&worm.id()));
+    let color = theme.worm_color(idx);
+    live.insert(worm.id(), (worm.head_position(), label, color));
   }
 
   // Remove dead labels
@@ -220,20 +237,21 @@ fn sync_worm_names(
   });
 
   // Update existing / spawn new
-  for (id, (pos, name, color)) in &live {
+  for (id, (pos, label, color)) in &live {
     let label_pos = Vec3::new(pos.x, pos.y + 24.0, 20.0);
 
     if let Some(entity) = name_reg.entities.get(id) {
-      if let Ok((mut transform, mut text)) = transforms.get_mut(*entity) {
+      if let Ok((mut transform, mut text, mut text_color)) = labels.get_mut(*entity) {
         transform.translation = label_pos;
-        **text = name.clone();
+        **text = label.clone();
+        text_color.0 = *color;
       }
     } else {
       let entity = commands
         .spawn((
-          Text2d::new(name.clone()),
+          Text2d::new(label.clone()),
           TextFont {
-            font: fonts.regular.clone(),
+            font: fonts.bold.clone(),
             font_size: 12.0,
             ..default()
           },
@@ -244,5 +262,13 @@ fn sync_worm_names(
         .id();
       name_reg.entities.insert(*id, entity);
     }
+  }
+}
+
+/// Format worm label: "#N name" for top 10, just "name" otherwise.
+fn format_worm_label(name: &str, rank: Option<&usize>) -> String {
+  match rank {
+    Some(r) => format!("#{} {}", r, name),
+    None => name.to_string(),
   }
 }
