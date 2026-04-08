@@ -167,60 +167,79 @@ def make_cookie():
 
 
 def make_board_bg():
-    """Minecraft-meets-code dark board background.
-    Dark stone blocks with subtle code symbols etched in.
-    """
-    size = 200
+    """Worms Zone style background — dark with dense squiggly doodle patterns."""
+    size = 400
     random.seed(42)
-    img = Image.new("RGBA", (size, size), (32, 34, 32, 255))
+
+    bg_color = (34, 38, 46)
+    img = Image.new("RGBA", (size, size), (*bg_color, 255))
     d = ImageDraw.Draw(img)
 
-    # Minecraft-style blocks with slight shade variation
-    block = 20
-    for bx in range(0, size, block):
-        for by in range(0, size, block):
-            v = random.randint(28, 38)
-            d.rectangle([bx, by, bx + block - 1, by + block - 1], fill=(v, v + 1, v, 255))
-            for _ in range(8):
-                px = bx + random.randint(1, block - 2)
-                py = by + random.randint(1, block - 2)
-                nv = v + random.randint(-4, 4)
-                d.point((px, py), fill=(nv, nv + 1, nv, 255))
+    squiggle_colors = [(44, 50, 60, 255), (42, 48, 58, 255), (46, 52, 62, 255)]
 
-    # Dark grooves between blocks
-    for x in range(0, size + 1, block):
-        d.line([(x, 0), (x, size - 1)], fill=(22, 24, 22, 255), width=1)
-    for y in range(0, size + 1, block):
-        d.line([(0, y), (size - 1, y)], fill=(22, 24, 22, 255), width=1)
+    for _ in range(120):
+        color = random.choice(squiggle_colors)
+        width = random.choice([2, 2, 3])
+        sx = random.randint(-20, size + 20)
+        sy = random.randint(-20, size + 20)
+        squiggle_type = random.choice(["wave", "curl", "zigzag", "arc", "s_curve"])
+        points = []
+        num_points = random.randint(8, 20)
 
-    # Scattered code symbols (very subtle, etched into stone)
-    symbols = ["{}", "//", "=>", "fn", "01", "++", "&&", "[]", "<>", "##",
-               "::", "if", "->", "0x", "();", "///"]
-    sym_color = (40, 44, 40, 255)
-    for _ in range(12):
-        sx = random.randint(4, size - 20)
-        sy = random.randint(4, size - 14)
-        sym = random.choice(symbols)
-        for ci, ch in enumerate(sym):
-            cx = sx + ci * 4
-            if ch in "{}[]()<>":
-                d.line([(cx + 1, sy), (cx + 1, sy + 4)], fill=sym_color, width=1)
-            elif ch == "/":
-                d.line([(cx + 2, sy), (cx, sy + 4)], fill=sym_color, width=1)
-            elif ch in "#=":
-                d.line([(cx, sy + 1), (cx + 2, sy + 1)], fill=sym_color, width=1)
-                d.line([(cx, sy + 3), (cx + 2, sy + 3)], fill=sym_color, width=1)
-            elif ch == "+":
-                d.line([(cx, sy + 2), (cx + 2, sy + 2)], fill=sym_color, width=1)
-                d.point((cx + 1, sy + 1), fill=sym_color)
-                d.point((cx + 1, sy + 3), fill=sym_color)
-            elif ch == "-":
-                d.line([(cx, sy + 2), (cx + 2, sy + 2)], fill=sym_color, width=1)
-            elif ch == ">":
-                d.line([(cx, sy), (cx + 2, sy + 2)], fill=sym_color, width=1)
-                d.line([(cx, sy + 4), (cx + 2, sy + 2)], fill=sym_color, width=1)
-            else:
-                d.rectangle([cx, sy + 1, cx + 2, sy + 3], fill=sym_color)
+        if squiggle_type == "wave":
+            angle = random.uniform(0, math.tau)
+            amp = random.uniform(4, 12)
+            freq = random.uniform(0.1, 0.3)
+            length = random.randint(30, 80)
+            dx, dy = math.cos(angle), math.sin(angle)
+            nx, ny = -dy, dx
+            for i in range(num_points):
+                t = i / (num_points - 1)
+                wave = math.sin(t * freq * length) * amp
+                points.append((sx + dx * t * length + nx * wave, sy + dy * t * length + ny * wave))
+        elif squiggle_type == "curl":
+            start_angle = random.uniform(0, math.tau)
+            r_start = random.uniform(3, 8)
+            r_end = random.uniform(10, 25)
+            turns = random.uniform(0.5, 1.5)
+            for i in range(num_points):
+                t = i / (num_points - 1)
+                r = r_start + (r_end - r_start) * t
+                a = start_angle + t * turns * math.tau
+                points.append((sx + math.cos(a) * r, sy + math.sin(a) * r))
+        elif squiggle_type == "zigzag":
+            angle = random.uniform(0, math.tau)
+            seg_len = random.uniform(6, 14)
+            dx, dy = math.cos(angle), math.sin(angle)
+            nx, ny = -dy, dx
+            cx_, cy_ = float(sx), float(sy)
+            for i in range(random.randint(4, 8)):
+                side = 1 if i % 2 == 0 else -1
+                cx_ += dx * seg_len + nx * side * seg_len * 0.5
+                cy_ += dy * seg_len + ny * side * seg_len * 0.5
+                points.append((cx_, cy_))
+        elif squiggle_type == "arc":
+            r = random.uniform(10, 30)
+            start_a = random.uniform(0, math.tau)
+            span = random.uniform(math.pi * 0.4, math.pi * 1.2)
+            for i in range(num_points):
+                t = i / (num_points - 1)
+                a = start_a + t * span
+                points.append((sx + math.cos(a) * r, sy + math.sin(a) * r))
+        elif squiggle_type == "s_curve":
+            angle = random.uniform(0, math.tau)
+            length = random.randint(25, 60)
+            amp = random.uniform(6, 15)
+            dx, dy = math.cos(angle), math.sin(angle)
+            nx, ny = -dy, dx
+            for i in range(num_points):
+                t = i / (num_points - 1)
+                wave = math.sin(t * math.pi * 2) * amp
+                points.append((sx + dx * t * length + nx * wave, sy + dy * t * length + ny * wave))
+
+        if len(points) >= 2:
+            for i in range(len(points) - 1):
+                d.line([points[i], points[i + 1]], fill=color, width=width)
 
     img.save(f"{ASSET_DIR}/board_bg.png")
 

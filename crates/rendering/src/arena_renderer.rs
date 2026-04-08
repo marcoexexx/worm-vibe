@@ -3,7 +3,7 @@ use bevy::prelude::*;
 
 use crate::theme::GruvboxTheme;
 
-const TILE_SIZE: f32 = 200.0;
+const TILE_SIZE: f32 = 400.0;
 const BOUNDARY_THICKNESS: f32 = 4.0;
 
 #[derive(Component)]
