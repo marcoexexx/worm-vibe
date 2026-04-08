@@ -42,6 +42,17 @@ impl GameWorld {
       let id = WormId::new(i as u64);
       let mut worm = spawn_ai_worm(id, half, &config, &mut rng);
       worm.set_name(random_bot_name(&mut rng));
+
+      // Pre-grow AI worms so the arena feels populated from the start.
+      // Top worms are big (king ~100+ segments), others scale down.
+      let rank_fraction = 1.0 - (i as f32 / ai_count as f32); // 1.0 for first, 0.0 for last
+      let extra_segments = (rank_fraction * rank_fraction * 100.0) as usize;
+      let extra_score = (rank_fraction * rank_fraction * 25000.0) as u64;
+      if extra_segments > 0 {
+        worm.grow(extra_segments);
+        worm.add_score(extra_score);
+      }
+
       let difficulty = config.ai_difficulty_for(i - 1);
       ai_worms.push((worm, BasicAiBrain::with_difficulty(difficulty)));
     }

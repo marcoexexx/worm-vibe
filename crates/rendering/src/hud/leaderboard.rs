@@ -78,35 +78,30 @@ fn update_leaderboard(
     return;
   };
 
-  // Collect all alive worms with (name, length, is_player)
-  let mut worms: Vec<(&str, usize, bool)> = Vec::new();
+  // Collect all alive worms with (name, score, is_player)
+  let mut worms: Vec<(&str, u64, bool)> = Vec::new();
 
   let player = world.player();
   if player.is_alive() {
-    worms.push((player.name(), player.length(), true));
+    worms.push((player.name(), player.score(), true));
   }
 
   for (worm, _) in world.ai_worms() {
     if worm.is_alive() {
-      worms.push((worm.name(), worm.length(), false));
+      worms.push((worm.name(), worm.score(), false));
     }
   }
 
-  // Sort by length descending
+  // Sort by score descending
   worms.sort_by(|a, b| b.1.cmp(&a.1));
 
   for (entry, mut text, mut color, mut vis) in &mut entries {
     if entry.rank < worms.len() {
-      let (name, length, is_player) = worms[entry.rank];
+      let (name, score, is_player) = worms[entry.rank];
       let rank = entry.rank + 1;
-      let marker = if is_player {
-        ">"
-      } else if rank == 1 {
-        "*"
-      } else {
-        " "
-      };
-      **text = format!("{}{:>2}. {:<10} {}", marker, rank, name, length);
+      let crown = if rank == 1 { "\u{1F451}" } else { " " };
+      let marker = if is_player { ">" } else { " " };
+      **text = format!("{}{}{:>2} {:<10} {}", marker, crown, rank, name, score);
       color.0 = if is_player {
         theme.green
       } else if rank == 1 {

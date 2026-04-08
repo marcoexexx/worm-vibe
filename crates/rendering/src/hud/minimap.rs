@@ -208,16 +208,18 @@ fn update_top_arrow(
   let mut top1_id = world.player().id();
   let mut top1_len = world.player().length();
   let mut top1_pos = world.player().head_position();
+  let mut top1_score = world.player().score();
   for (worm, _) in world.ai_worms() {
     if worm.is_alive() && worm.length() > top1_len {
       top1_id = worm.id();
       top1_len = worm.length();
       top1_pos = worm.head_position();
+      top1_score = worm.score();
     }
   }
 
   if top1_id == world.player().id() {
-    **text = "YOU ARE #1".to_string();
+    **text = "YOU ARE #1 \u{1F451}".to_string();
     *vis = Visibility::Visible;
     return;
   }
@@ -226,8 +228,9 @@ fn update_top_arrow(
   let delta = top1_pos - player_pos;
   let dist = delta.length();
   let arrow = direction_arrow(delta);
+  let score = top1_score;
 
-  **text = format!("{} #1 ({:.0}m)", arrow, dist / 10.0);
+  **text = format!("\u{1F451} {} ({:.0}m) {}", arrow, dist / 10.0, score);
   *vis = Visibility::Visible;
 }
 
@@ -238,14 +241,14 @@ fn direction_arrow(delta: Vec2) -> &'static str {
   let angle = delta.y.atan2(delta.x);
   let octant = ((angle + std::f32::consts::PI) / (std::f32::consts::PI / 4.0)) as usize % 8;
   match octant {
-    0 => "<-",
-    1 => "\\",
-    2 => "v",
-    3 => "/",
-    4 => "->",
-    5 => "\\",
-    6 => "^",
-    7 => "/",
+    0 => "\u{2190}", // ←
+    1 => "\u{2199}", // ↙
+    2 => "\u{2193}", // ↓
+    3 => "\u{2198}", // ↘
+    4 => "\u{2192}", // →
+    5 => "\u{2197}", // ↗
+    6 => "\u{2191}", // ↑
+    7 => "\u{2196}", // ↖
     _ => "o",
   }
 }
