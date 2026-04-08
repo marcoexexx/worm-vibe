@@ -1,0 +1,9 @@
+[package]
+name = "ai"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+domain = { path = "../domain" }
+glam = { workspace = true }
+rand = { workspace = true }

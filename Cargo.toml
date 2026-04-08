@@ -1,0 +1,19 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/domain",
+    "crates/physics",
+    "crates/ai",
+    "crates/app",
+    "crates/infra",
+    "crates/input",
+    "crates/rendering",
+    "crates/game",
+]
+
+[workspace.dependencies]
+bevy = "0.15"
+glam = "0.29"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rand = "0.8"

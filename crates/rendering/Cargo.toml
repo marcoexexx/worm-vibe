@@ -1,0 +1,12 @@
+[package]
+name = "rendering"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+domain = { path = "../domain" }
+app = { path = "../app" }
+input = { path = "../input" }
+bevy = { workspace = true }
+glam = { workspace = true }
+rand = { workspace = true }
