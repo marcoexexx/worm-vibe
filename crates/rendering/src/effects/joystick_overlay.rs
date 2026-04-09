@@ -1,15 +1,20 @@
 use bevy::prelude::*;
-use input::VirtualJoystick;
+use input::{TouchBoost, VirtualJoystick};
 
 const OUTER_DIAMETER: f32 = 160.0;
 const INNER_DIAMETER: f32 = 60.0;
+const BOOST_SIZE: f32 = 80.0;
 const OUTER_ALPHA: f32 = 0.25;
 const INNER_ALPHA: f32 = 0.4;
+
 #[derive(Component)]
 struct JoystickBase;
 
 #[derive(Component)]
 struct JoystickThumb;
+
+#[derive(Component)]
+struct BoostButton;
 
 pub(crate) struct JoystickOverlayPlugin;
 
@@ -17,15 +22,15 @@ impl Plugin for JoystickOverlayPlugin {
   fn build(&self, app: &mut App) {
     app
       .add_systems(Startup, spawn_overlay)
-      .add_systems(Update, update_overlay);
+      .add_systems(Update, (update_joystick, update_boost_button));
   }
 }
 
-fn spawn_overlay(mut commands: Commands) {
+fn spawn_overlay(mut commands: Commands, asset_server: Res<AssetServer>) {
   let outer_color = Color::srgba(1.0, 1.0, 1.0, OUTER_ALPHA);
   let inner_color = Color::srgba(1.0, 1.0, 1.0, INNER_ALPHA);
-  let border_color = Color::srgba(1.0, 1.0, 1.0, OUTER_ALPHA + 0.1);
 
+  // Joystick base ring
   commands.spawn((
     Node {
       position_type: PositionType::Absolute,
@@ -33,17 +38,15 @@ fn spawn_overlay(mut commands: Commands) {
       height: Val::Px(OUTER_DIAMETER),
       left: Val::Px(0.0),
       top: Val::Px(0.0),
-      justify_content: JustifyContent::Center,
-      align_items: AlignItems::Center,
       ..default()
     },
     BackgroundColor(outer_color),
-    BorderColor(border_color),
     BorderRadius::all(Val::Percent(50.0)),
     Visibility::Hidden,
     JoystickBase,
   ));
 
+  // Joystick thumb
   commands.spawn((
     Node {
       position_type: PositionType::Absolute,
@@ -58,10 +61,42 @@ fn spawn_overlay(mut commands: Commands) {
     Visibility::Hidden,
     JoystickThumb,
   ));
+
+  // Speed boost button (bottom-left)
+  let boost_color = Color::srgba(1.0, 0.4, 0.1, 0.5);
+  commands
+    .spawn((
+      Node {
+        position_type: PositionType::Absolute,
+        width: Val::Px(BOOST_SIZE),
+        height: Val::Px(BOOST_SIZE),
+        left: Val::Px(24.0),
+        bottom: Val::Px(32.0),
+        justify_content: JustifyContent::Center,
+        align_items: AlignItems::Center,
+        border: UiRect::all(Val::Px(3.0)),
+        ..default()
+      },
+      BackgroundColor(boost_color),
+      BorderColor(Color::srgba(1.0, 1.0, 1.0, 0.3)),
+      BorderRadius::all(Val::Percent(50.0)),
+      BoostButton,
+    ))
+    .with_children(|btn| {
+      btn.spawn((
+        Text::new(">>"),
+        TextFont {
+          font: asset_server.load("fonts/JetBrainsMono-Bold.ttf"),
+          font_size: 22.0,
+          ..default()
+        },
+        TextColor(Color::WHITE),
+      ));
+    });
 }
 
 #[allow(clippy::type_complexity)]
-fn update_overlay(
+fn update_joystick(
   joystick: Res<VirtualJoystick>,
   mut base_q: Query<(&mut Node, &mut Visibility), (With<JoystickBase>, Without<JoystickThumb>)>,
   mut thumb_q: Query<(&mut Node, &mut Visibility), (With<JoystickThumb>, Without<JoystickBase>)>,
@@ -105,4 +140,15 @@ fn update_overlay(
   let half_inner = INNER_DIAMETER / 2.0;
   thumb_node.left = Val::Px(thumb_pos.x - half_inner);
   thumb_node.top = Val::Px(thumb_pos.y - half_inner);
+}
+
+fn update_boost_button(boost: Res<TouchBoost>, mut btn_q: Query<&mut BackgroundColor, With<BoostButton>>) {
+  let Ok(mut bg) = btn_q.get_single_mut() else {
+    return;
+  };
+  bg.0 = if boost.active {
+    Color::srgba(1.0, 0.6, 0.1, 0.8)
+  } else {
+    Color::srgba(1.0, 0.4, 0.1, 0.5)
+  };
 }

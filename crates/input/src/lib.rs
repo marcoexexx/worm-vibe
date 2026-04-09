@@ -4,7 +4,7 @@ mod touch;
 
 pub use keyboard::KeyboardInputPlugin;
 pub use mouse::MouseInputPlugin;
-pub use touch::{TouchInputPlugin, VirtualJoystick};
+pub use touch::{TouchBoost, TouchInputPlugin, VirtualJoystick};
 
 use bevy::prelude::*;
 use domain::{ControlMode, MovementIntent};

@@ -14,8 +14,18 @@ use crate::theme::GruvboxTheme;
 // ============================================================================
 
 /// Newtype so `domain::GameSettings` can be a Bevy `Resource`.
-#[derive(Resource, Clone, Debug, Default, Deref, DerefMut)]
+#[derive(Resource, Clone, Debug, Deref, DerefMut)]
 pub struct SettingsRes(pub GameSettings);
+
+impl Default for SettingsRes {
+  fn default() -> Self {
+    let mut settings = GameSettings::default();
+    if cfg!(target_arch = "wasm32") {
+      settings.control_mode = ControlMode::Joystick;
+    }
+    Self(settings)
+  }
+}
 
 // ============================================================================
 // Components

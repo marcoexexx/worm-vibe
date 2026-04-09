@@ -15,7 +15,7 @@ impl Plugin for ScoreDisplayPlugin {
     app
       .add_plugins(FrameTimeDiagnosticsPlugin)
       .add_systems(Startup, spawn_hud)
-      .add_systems(Update, update_score);
+      .add_systems(Update, (update_score, scale_hud_to_window));
   }
 }
 
@@ -30,8 +30,8 @@ fn spawn_hud(mut commands: Commands, theme: Res<GruvboxTheme>, fonts: Res<GameFo
     TextColor(theme.green),
     Node {
       position_type: PositionType::Absolute,
-      top: Val::Px(12.0),
-      left: Val::Px(16.0),
+      top: Val::Px(8.0),
+      left: Val::Px(8.0),
       ..default()
     },
     ScoreText,
@@ -47,7 +47,6 @@ fn update_score(
     return;
   };
 
-  // FPS
   let fps = diagnostics
     .get(&FrameTimeDiagnosticsPlugin::FPS)
     .and_then(|d| d.smoothed())
@@ -60,8 +59,6 @@ fn update_score(
 
   let score = world.player().score();
   let length = world.player().length();
-
-  // Elapsed time as MM:SS
   let elapsed = world.elapsed();
   let mins = (elapsed / 60.0) as u32;
   let secs = (elapsed % 60.0) as u32;
@@ -70,4 +67,16 @@ fn update_score(
     "> SCORE: {:08} | LEN: {:03} | FPS: {:03} | {:02}:{:02}",
     score, length, fps as u32, mins, secs
   );
+}
+
+fn scale_hud_to_window(windows: Query<&Window>, mut query: Query<&mut TextFont, With<ScoreText>>) {
+  let Ok(window) = windows.get_single() else {
+    return;
+  };
+  let Ok(mut font) = query.get_single_mut() else {
+    return;
+  };
+  // Scale font: 18px at 1280w, 11px at 400w
+  let scale = (window.width() / 1280.0).clamp(0.6, 1.0);
+  font.font_size = 18.0 * scale;
 }

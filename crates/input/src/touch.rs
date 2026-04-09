@@ -8,7 +8,6 @@ use crate::{ActiveControlMode, CurrentIntent};
 const DEAD_ZONE: f32 = 10.0;
 const JOYSTICK_RADIUS: f32 = 80.0;
 
-/// Tracks the virtual joystick state.
 #[derive(Resource, Default)]
 pub struct VirtualJoystick {
   center: Option<Vec2>,
@@ -34,12 +33,20 @@ impl VirtualJoystick {
   }
 }
 
+/// Tracks whether the boost button is being held.
+#[derive(Resource, Default)]
+pub struct TouchBoost {
+  finger_id: Option<u64>,
+  pub active: bool,
+}
+
 pub struct TouchInputPlugin;
 
 impl Plugin for TouchInputPlugin {
   fn build(&self, app: &mut App) {
     app
       .init_resource::<VirtualJoystick>()
+      .init_resource::<TouchBoost>()
       .add_systems(PreUpdate, read_touch.run_if(is_joystick_mode));
   }
 }
@@ -51,6 +58,7 @@ fn is_joystick_mode(mode: Res<ActiveControlMode>) -> bool {
 fn read_touch(
   mut events: EventReader<TouchInput>,
   mut joystick: ResMut<VirtualJoystick>,
+  mut boost: ResMut<TouchBoost>,
   mut intent: ResMut<CurrentIntent>,
   windows: Query<&Window>,
 ) {
@@ -64,8 +72,19 @@ fn read_touch(
 
     match event.phase {
       bevy::input::touch::TouchPhase::Started => {
-        // Left half: joystick. Right half: boost.
         if pos.x < half_width && joystick.finger_id.is_none() {
+          // Left side: boost button area (bottom-left quadrant)
+          if pos.y > window.height() * 0.6 && pos.x < window.width() * 0.25 {
+            boost.finger_id = Some(event.id);
+            boost.active = true;
+          } else {
+            // Left side: joystick
+            joystick.finger_id = Some(event.id);
+            joystick.center = Some(pos);
+            joystick.current = Some(pos);
+          }
+        } else if pos.x >= half_width && joystick.finger_id.is_none() {
+          // Right side: joystick
           joystick.finger_id = Some(event.id);
           joystick.center = Some(pos);
           joystick.current = Some(pos);
@@ -82,6 +101,10 @@ fn read_touch(
           joystick.center = None;
           joystick.current = None;
         }
+        if boost.finger_id == Some(event.id) {
+          boost.finger_id = None;
+          boost.active = false;
+        }
       }
     }
   }
@@ -89,11 +112,11 @@ fn read_touch(
   // Convert joystick to intent
   if let (Some(center), Some(current)) = (joystick.center, joystick.current) {
     let delta = current - center;
-    // Flip Y: screen Y is down, game Y is up
     let game_delta = Vec2::new(delta.x, -delta.y);
 
     if game_delta.length() > DEAD_ZONE {
-      intent.0 = MovementIntent::new(game_delta);
+      let movement = MovementIntent::new(game_delta);
+      intent.0 = if boost.active { movement.with_boost() } else { movement };
     }
   }
 }
