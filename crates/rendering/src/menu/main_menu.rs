@@ -13,10 +13,10 @@ pub enum MenuButton {
   StartNormal,
   StartHard,
   Settings,
+  About,
   Quit,
 }
 
-/// Resource: which difficulty the player picked.
 #[derive(Resource, Default)]
 pub struct SelectedDifficulty(pub Option<DifficultyPreset>);
 
@@ -28,10 +28,10 @@ impl Plugin for MainMenuPlugin {
   }
 }
 
-/// Spawn the main menu UI. Called by game crate on state enter.
-pub fn spawn_main_menu(commands: &mut Commands, theme: &GruvboxTheme, fonts: &GameFonts) {
-  let font = fonts.bold.clone();
-  let font_regular = fonts.regular.clone();
+pub fn spawn_main_menu(commands: &mut Commands, theme: &GruvboxTheme, fonts: &GameFonts, window: &Window) {
+  let bold = fonts.bold.clone();
+  let regular = fonts.regular.clone();
+  let s = ui_scale(window.width());
 
   commands
     .spawn((
@@ -41,7 +41,7 @@ pub fn spawn_main_menu(commands: &mut Commands, theme: &GruvboxTheme, fonts: &Ga
         justify_content: JustifyContent::Center,
         align_items: AlignItems::Center,
         flex_direction: FlexDirection::Column,
-        row_gap: Val::Px(16.0),
+        row_gap: Val::Px(12.0 * s),
         ..default()
       },
       BackgroundColor(theme.bg_hard),
@@ -52,36 +52,30 @@ pub fn spawn_main_menu(commands: &mut Commands, theme: &GruvboxTheme, fonts: &Ga
       parent.spawn((
         Text::new("WORMZONE"),
         TextFont {
-          font: font.clone(),
-          font_size: 48.0,
+          font: bold.clone(),
+          font_size: 42.0 * s,
           ..default()
         },
         TextColor(theme.green),
       ));
 
-      // Subtitle
       parent.spawn((
         Text::new("// a developer's snake game"),
         TextFont {
-          font: font_regular.clone(),
-          font_size: 16.0,
+          font: regular.clone(),
+          font_size: 13.0 * s,
           ..default()
         },
         TextColor(theme.gray),
       ));
 
-      // Spacer
-      parent.spawn(Node {
-        height: Val::Px(16.0),
-        ..default()
-      });
+      spacer(parent, 12.0 * s);
 
-      // Difficulty label
       parent.spawn((
         Text::new("SELECT DIFFICULTY"),
         TextFont {
-          font: font_regular.clone(),
-          font_size: 14.0,
+          font: regular.clone(),
+          font_size: 11.0 * s,
           ..default()
         },
         TextColor(theme.fg),
@@ -91,63 +85,76 @@ pub fn spawn_main_menu(commands: &mut Commands, theme: &GruvboxTheme, fonts: &Ga
       parent
         .spawn(Node {
           flex_direction: FlexDirection::Row,
-          column_gap: Val::Px(12.0),
+          column_gap: Val::Px(8.0 * s),
           ..default()
         })
         .with_children(|row| {
-          spawn_menu_button(
+          menu_btn(row, theme, &regular, "[ EASY ]", MenuButton::StartEasy, theme.green, s);
+          menu_btn(
             row,
             theme,
-            &font_regular,
-            "[ EASY ]",
-            MenuButton::StartEasy,
-            theme.green,
-          );
-          spawn_menu_button(
-            row,
-            theme,
-            &font_regular,
+            &regular,
             "[ NORMAL ]",
             MenuButton::StartNormal,
             theme.yellow,
+            s,
           );
-          spawn_menu_button(row, theme, &font_regular, "[ HARD ]", MenuButton::StartHard, theme.red);
+          menu_btn(row, theme, &regular, "[ HARD ]", MenuButton::StartHard, theme.red, s);
         });
 
-      // Spacer
-      parent.spawn(Node {
-        height: Val::Px(8.0),
-        ..default()
-      });
+      spacer(parent, 4.0 * s);
 
-      // Settings button
-      spawn_menu_button(
-        parent,
-        theme,
-        &font_regular,
-        "[ SETTINGS ]",
-        MenuButton::Settings,
-        theme.aqua,
-      );
+      // Settings / About row
+      parent
+        .spawn(Node {
+          flex_direction: FlexDirection::Row,
+          column_gap: Val::Px(8.0 * s),
+          ..default()
+        })
+        .with_children(|row| {
+          menu_btn(
+            row,
+            theme,
+            &regular,
+            "[ SETTINGS ]",
+            MenuButton::Settings,
+            theme.aqua,
+            s,
+          );
+          menu_btn(row, theme, &regular, "[ ABOUT ]", MenuButton::About, theme.purple, s);
+        });
 
-      // Quit button
-      spawn_menu_button(parent, theme, &font_regular, "[ QUIT ]", MenuButton::Quit, theme.gray);
+      if !cfg!(target_arch = "wasm32") {
+        menu_btn(parent, theme, &regular, "[ QUIT ]", MenuButton::Quit, theme.gray, s);
+      }
     });
 }
 
-fn spawn_menu_button(
+pub fn despawn_main_menu(commands: &mut Commands, query: &Query<Entity, With<MainMenuRoot>>) {
+  for entity in query.iter() {
+    commands.entity(entity).despawn_recursive();
+  }
+}
+
+/// Scale factor: 1.0 at 1280px, ~0.55 at 360px (mobile)
+fn ui_scale(width: f32) -> f32 {
+  (width / 1280.0).clamp(0.55, 1.0)
+}
+
+fn menu_btn(
   parent: &mut ChildBuilder,
   theme: &GruvboxTheme,
   font: &Handle<Font>,
   label: &str,
   button: MenuButton,
-  text_color: Color,
+  color: Color,
+  scale: f32,
 ) {
   parent
     .spawn((
       Button,
       Node {
-        padding: UiRect::axes(Val::Px(24.0), Val::Px(12.0)),
+        padding: UiRect::axes(Val::Px(18.0 * scale), Val::Px(8.0 * scale)),
         ..default()
       },
       BackgroundColor(theme.bg_soft),
@@ -158,17 +165,17 @@ fn spawn_menu_button(
         Text::new(label),
         TextFont {
           font: font.clone(),
-          font_size: 20.0,
+          font_size: 16.0 * scale,
           ..default()
         },
-        TextColor(text_color),
+        TextColor(color),
       ));
     });
 }
 
-/// Despawn main menu entities.
-pub fn despawn_main_menu(commands: &mut Commands, query: &Query<Entity, With<MainMenuRoot>>) {
-  for entity in query.iter() {
-    commands.entity(entity).despawn_recursive();
-  }
+fn spacer(parent: &mut ChildBuilder, height: f32) {
+  parent.spawn(Node {
+    height: Val::Px(height),
+    ..default()
+  });
 }

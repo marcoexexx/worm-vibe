@@ -1,3 +1,4 @@
+pub mod about_menu;
 pub mod game_over;
 pub mod main_menu;
 pub mod pause_menu;
@@ -14,6 +15,7 @@ impl Plugin for MenuPlugin {
       pause_menu::PauseMenuPlugin,
       game_over::GameOverPlugin,
       settings_menu::SettingsMenuPlugin,
+      about_menu::AboutMenuPlugin,
     ));
   }
 }

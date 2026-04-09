@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use rendering::audio::play_sfx;
+use rendering::menu::about_menu::{self, AboutButton, AboutMenuRoot};
 use rendering::menu::game_over::{self, GameOverButton, GameOverRoot};
 use rendering::menu::main_menu::{self, MainMenuRoot};
 use rendering::menu::pause_menu::{self, PauseButton, PauseMenuRoot};
@@ -18,6 +19,9 @@ impl Plugin for MenuHandlerPlugin {
       .add_systems(OnEnter(AppState::MainMenu), enter_main_menu)
       .add_systems(OnExit(AppState::MainMenu), exit_main_menu)
       .add_systems(Update, handle_main_menu_buttons.run_if(in_state(AppState::MainMenu)))
+      .add_systems(OnEnter(AppState::About), enter_about)
+      .add_systems(OnExit(AppState::About), exit_about)
+      .add_systems(Update, handle_about_buttons.run_if(in_state(AppState::About)))
       .add_systems(OnEnter(AppState::Settings), enter_settings)
       .add_systems(OnExit(AppState::Settings), exit_settings)
       .add_systems(Update, handle_settings_buttons.run_if(in_state(AppState::Settings)))
@@ -34,8 +38,11 @@ impl Plugin for MenuHandlerPlugin {
 // Main menu
 // ============================================================================
 
-fn enter_main_menu(mut commands: Commands, theme: Res<GruvboxTheme>, fonts: Res<GameFonts>) {
-  main_menu::spawn_main_menu(&mut commands, &theme, &fonts);
+fn enter_main_menu(mut commands: Commands, theme: Res<GruvboxTheme>, fonts: Res<GameFonts>, windows: Query<&Window>) {
+  let Ok(window) = windows.get_single() else {
+    return;
+  };
+  main_menu::spawn_main_menu(&mut commands, &theme, &fonts, window);
 }
 
 fn exit_main_menu(mut commands: Commands, query: Query<Entity, With<MainMenuRoot>>) {
@@ -73,6 +80,9 @@ fn handle_main_menu_buttons(
       }
       main_menu::MenuButton::Settings => {
         next_state.set(AppState::Settings);
+      }
+      main_menu::MenuButton::About => {
+        next_state.set(AppState::About);
       }
       main_menu::MenuButton::Quit => {
         #[cfg(not(target_arch = "wasm32"))]
@@ -195,5 +205,35 @@ fn handle_game_over_buttons(
       GameOverButton::Retry => next_state.set(AppState::Playing),
       GameOverButton::MainMenu => next_state.set(AppState::MainMenu),
     }
+  }
+}
+
+// ============================================================================
+// About
+// ============================================================================
+
+fn enter_about(mut commands: Commands, theme: Res<GruvboxTheme>, fonts: Res<GameFonts>) {
+  about_menu::spawn_about_menu(&mut commands, &theme, &fonts);
+}
+
+fn exit_about(mut commands: Commands, query: Query<Entity, With<AboutMenuRoot>>) {
+  about_menu::despawn_about_menu(&mut commands, &query);
+}
+
+fn handle_about_buttons(
+  mut commands: Commands,
+  interaction: Query<(&Interaction, &AboutButton), Changed<Interaction>>,
+  mut next_state: ResMut<NextState<AppState>>,
+  sounds: Option<Res<GameSounds>>,
+  settings: Res<SettingsRes>,
+) {
+  for (interaction, _) in &interaction {
+    if *interaction != Interaction::Pressed {
+      continue;
+    }
+    if let Some(ref sounds) = sounds {
+      play_sfx(&mut commands, &sounds.menu_click, &settings);
+    }
+    next_state.set(AppState::MainMenu);
   }
 }
