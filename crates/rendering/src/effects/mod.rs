@@ -1,6 +1,7 @@
 pub mod boost;
 pub mod death;
 pub mod eat;
+pub mod joystick_overlay;
 pub mod screen_shake;
 
 use bevy::prelude::*;
@@ -14,6 +15,7 @@ impl Plugin for EffectsPlugin {
       eat::EatEffectPlugin,
       screen_shake::ScreenShakePlugin,
       boost::BoostEffectPlugin,
+      joystick_overlay::JoystickOverlayPlugin,
     ));
   }
 }
