@@ -2173,12 +2173,14 @@ dependencies = [
  "app",
  "bevy",
  "domain",
+ "getrandom 0.2.17",
  "glam",
  "infra",
  "input",
  "physics",
  "rand",
  "rendering",
+ "wasm-bindgen",
 ]
 
 [[package]]

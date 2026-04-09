@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WORMZONE</title>
+  <style>
+    * { margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #1d2021; }
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+    #loading {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #ebdbb2;
+      font-family: monospace;
+      font-size: 1.5rem;
+      background: #1d2021;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">Loading WORMZONE...</div>
+  <script type="module">
+    import init from './wormzone.js';
+
+    init().then(() => {
+      document.getElementById('loading').remove();
+    }).catch(err => {
+      document.getElementById('loading').textContent = 'Failed to load: ' + err;
+      console.error(err);
+    });
+  </script>
+</body>
+</html>
