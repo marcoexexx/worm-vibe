@@ -4,6 +4,7 @@ mod effects_handler;
 mod game_tick;
 mod menu_handler;
 mod persistence;
+mod settings_sync;
 
 use bevy::prelude::*;
 
@@ -18,6 +19,7 @@ impl Plugin for GameSystemsPlugin {
       persistence::PersistencePlugin,
       button_hover::ButtonHoverPlugin,
       effects_handler::EffectsHandlerPlugin,
+      settings_sync::SettingsSyncPlugin,
     ));
   }
 }

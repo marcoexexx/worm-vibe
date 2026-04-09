@@ -12,6 +12,7 @@ pub enum MenuButton {
   StartEasy,
   StartNormal,
   StartHard,
+  Settings,
   Quit,
 }
 
@@ -119,6 +120,16 @@ pub fn spawn_main_menu(commands: &mut Commands, theme: &GruvboxTheme, fonts: &Ga
         ..default()
       });
 
+      // Settings button
+      spawn_menu_button(
+        parent,
+        theme,
+        &font_regular,
+        "[ SETTINGS ]",
+        MenuButton::Settings,
+        theme.aqua,
+      );
+
       // Quit button
       spawn_menu_button(parent, theme, &font_regular, "[ QUIT ]", MenuButton::Quit, theme.gray);
     });
@@ -144,7 +155,7 @@ fn spawn_menu_button(
     ))
     .with_children(|btn| {
       btn.spawn((
-        Text::new(label.to_string()),
+        Text::new(label),
         TextFont {
           font: font.clone(),
           font_size: 20.0,

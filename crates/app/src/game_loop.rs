@@ -43,15 +43,12 @@ impl GameWorld {
       let mut worm = spawn_ai_worm(id, half, &config, &mut rng);
       worm.set_name(random_bot_name(&mut rng));
 
-      // Pre-grow AI worms so the arena feels populated from the start.
-      // Top worms are big (king ~100+ segments), others scale down.
-      let rank_fraction = 1.0 - (i as f32 / ai_count as f32); // 1.0 for first, 0.0 for last
-      let extra_segments = (rank_fraction * rank_fraction * 100.0) as usize;
-      let extra_score = (rank_fraction * rank_fraction * 25000.0) as u64;
-      if extra_segments > 0 {
-        worm.grow(extra_segments);
-        worm.add_score(extra_score);
-      }
+      // Scale body size by rank so arena feels alive on spawn
+      let rank_fraction = 1.0 - (i as f32 / ai_count as f32);
+      let extra_segments = (rank_fraction * 200.0 + 20.0) as usize;
+      let extra_score = extra_segments as u64 * 5;
+      worm.grow(extra_segments);
+      worm.add_score(extra_score);
 
       let difficulty = config.ai_difficulty_for(i - 1);
       ai_worms.push((worm, BasicAiBrain::with_difficulty(difficulty)));
@@ -194,10 +191,10 @@ fn process_collisions(world: &mut GameWorld, events: &mut Vec<DomainEvent>) {
     }
   }
 
-  // Drop food from dead worms, then kill them
+  // Drop food from dead worms (score distributed across dropped food), then kill them
   for worm_id in &dead_worm_ids {
-    let (positions, radius) = collect_segment_info(world, *worm_id);
-    let dropped = food_service::drop_from_segments(&positions, radius, world.config.food(), &mut world.rng);
+    let (positions, radius, score) = collect_segment_info(world, *worm_id);
+    let dropped = food_service::drop_from_segments(&positions, radius, score, world.config.food(), &mut world.rng);
     world.foods.extend(dropped);
   }
   for worm_id in &dead_worm_ids {
@@ -251,9 +248,12 @@ fn process_food_eaten(
   let kind = food.kind();
   let pos = food.position();
 
+  let total_score = food.total_score();
+  let growth = kind.growth();
+
   if let Some(worm) = find_worm_mut(world, worm_id) {
-    worm.add_score(kind.score_value());
-    worm.grow(kind.growth());
+    worm.add_score(total_score);
+    worm.grow(growth);
     events.push(DomainEvent::FoodEaten {
       worm_id,
       position: pos,
@@ -484,14 +484,15 @@ fn find_worm_ref(world: &GameWorld, id: WormId) -> Option<&Worm> {
   world.ai_worms.iter().find(|(w, _)| w.id() == id).map(|(w, _)| w)
 }
 
-fn collect_segment_info(world: &GameWorld, id: WormId) -> (Vec<Vec2>, f32) {
+fn collect_segment_info(world: &GameWorld, id: WormId) -> (Vec<Vec2>, f32, u64) {
   if let Some(worm) = find_worm_ref(world, id) {
     (
       worm.segments().iter().map(|s| s.position()).collect(),
       worm.current_radius(),
+      worm.score(),
     )
   } else {
-    (Vec::new(), 11.0)
+    (Vec::new(), 11.0, 0)
   }
 }
 

@@ -19,23 +19,36 @@ pub(crate) fn spawn_batch(half_extents: Vec2, count: usize, cfg: &FoodConfig, rn
 }
 
 /// Drop food at each segment position of a dead worm.
-/// Random food types, size scaled by dead worm's radius.
+/// The dead worm's score is distributed evenly across all dropped food items.
 pub(crate) fn drop_from_segments(
   positions: &[Vec2],
   worm_radius: f32,
+  worm_score: u64,
   cfg: &FoodConfig,
   rng: &mut impl Rng,
 ) -> Vec<Food> {
+  if positions.is_empty() {
+    return Vec::new();
+  }
+
   let jitter = cfg.death_drop_jitter;
   let base_radius = (worm_radius * 0.8).max(cfg.radius);
 
+  // Distribute dead worm's score across all dropped food
+  let count = positions.len() as u64;
+  let bonus_per_food = worm_score / count.max(1);
+  let remainder = worm_score % count.max(1);
+
   positions
     .iter()
-    .map(|&pos| {
+    .enumerate()
+    .map(|(i, &pos)| {
       let scatter = Vec2::new(rng.gen_range(-jitter..jitter), rng.gen_range(-jitter..jitter));
       let kind = pick_random_kind(rng);
       let radius = random_food_radius(base_radius, rng);
-      Food::new(pos + scatter, kind, radius)
+      // First food gets any remainder score
+      let bonus = bonus_per_food + if (i as u64) < remainder { 1 } else { 0 };
+      Food::new(pos + scatter, kind, radius).with_bonus_score(bonus)
     })
     .collect()
 }

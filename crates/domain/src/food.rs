@@ -52,11 +52,23 @@ pub struct Food {
   position: Vec2,
   kind: FoodKind,
   radius: f32,
+  /// Extra score from a dead worm (distributed across dropped food).
+  bonus_score: u64,
 }
 
 impl Food {
   pub fn new(position: Vec2, kind: FoodKind, radius: f32) -> Self {
-    Self { position, kind, radius }
+    Self {
+      position,
+      kind,
+      radius,
+      bonus_score: 0,
+    }
+  }
+
+  pub fn with_bonus_score(mut self, bonus: u64) -> Self {
+    self.bonus_score = bonus;
+    self
   }
 
   pub fn position(&self) -> Vec2 {
@@ -69,6 +81,11 @@ impl Food {
 
   pub fn radius(&self) -> f32 {
     self.radius
+  }
+
+  /// Total score this food grants: base kind value + bonus from dead worm.
+  pub fn total_score(&self) -> u64 {
+    self.kind.score_value() + self.bonus_score
   }
 
   pub fn set_position(&mut self, pos: Vec2) {

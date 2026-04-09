@@ -1,6 +1,7 @@
 pub mod game_over;
 pub mod main_menu;
 pub mod pause_menu;
+pub mod settings_menu;
 
 use bevy::prelude::*;
 
@@ -12,6 +13,7 @@ impl Plugin for MenuPlugin {
       main_menu::MainMenuPlugin,
       pause_menu::PauseMenuPlugin,
       game_over::GameOverPlugin,
+      settings_menu::SettingsMenuPlugin,
     ));
   }
 }

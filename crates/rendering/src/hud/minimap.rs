@@ -39,7 +39,12 @@ impl Plugin for MinimapPlugin {
   }
 }
 
-fn spawn_minimap_frame(mut commands: Commands, theme: Res<GruvboxTheme>, fonts: Res<GameFonts>, asset_server: Res<AssetServer>) {
+fn spawn_minimap_frame(
+  mut commands: Commands,
+  theme: Res<GruvboxTheme>,
+  fonts: Res<GameFonts>,
+  asset_server: Res<AssetServer>,
+) {
   // Minimap container
   commands
     .spawn((
@@ -156,7 +161,7 @@ fn update_minimap(
     (nx.clamp(1.0, MINIMAP_SIZE - 2.0), ny.clamp(1.0, MINIMAP_SIZE - 2.0))
   };
 
-  // Find #1 worm
+  // Find king (longest worm = biggest on screen)
   let mut top1_id = world.player().id();
   let mut top1_len = world.player().length();
   for (worm, _) in world.ai_worms() {
@@ -239,18 +244,16 @@ fn update_top_arrow(
   let mut top1_id = world.player().id();
   let mut top1_len = world.player().length();
   let mut top1_pos = world.player().head_position();
-  let mut top1_score = world.player().score();
   for (worm, _) in world.ai_worms() {
     if worm.is_alive() && worm.length() > top1_len {
       top1_id = worm.id();
       top1_len = worm.length();
       top1_pos = worm.head_position();
-      top1_score = worm.score();
     }
   }
 
   if top1_id == world.player().id() {
-    **text = "YOU ARE #1".to_string();
+    **text = "YOU ARE KING".to_string();
     *vis = Visibility::Visible;
     return;
   }
@@ -260,7 +263,7 @@ fn update_top_arrow(
   let dist = delta.length();
   let arrow = direction_arrow(delta);
 
-  **text = format!("{} ({:.0}m) {}", arrow, dist / 10.0, top1_score);
+  **text = format!("{} ({:.0}m) LEN:{}", arrow, dist / 10.0, top1_len);
   *vis = Visibility::Visible;
 }
 

@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use domain::GameSettings;
 
 /// Pre-loaded sound effect handles.
 #[derive(Resource)]
@@ -26,7 +27,10 @@ fn load_sounds(mut commands: Commands, asset_server: Res<AssetServer>) {
   });
 }
 
-/// Play a one-shot sound effect. Call from game crate event handlers.
-pub fn play_sfx(commands: &mut Commands, sound: &Handle<AudioSource>) {
+/// Play a one-shot sound effect, respecting the global sound setting.
+pub fn play_sfx(commands: &mut Commands, sound: &Handle<AudioSource>, settings: &GameSettings) {
+  if !settings.sound_on {
+    return;
+  }
   commands.spawn((AudioPlayer(sound.clone()), PlaybackSettings::DESPAWN));
 }

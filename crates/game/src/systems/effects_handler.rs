@@ -3,6 +3,7 @@ use domain::FoodKind;
 use rendering::audio::play_sfx;
 use rendering::effects::death::{spawn_death_burst, spawn_death_flash};
 use rendering::effects::eat::spawn_eat_pop;
+use rendering::menu::settings_menu::SettingsRes;
 use rendering::theme::GruvboxTheme;
 use rendering::{GameSounds, ScreenShake};
 
@@ -25,6 +26,7 @@ fn handle_food_eaten(
   mut events: EventReader<FoodEatenEvent>,
   theme: Res<GruvboxTheme>,
   sounds: Option<Res<GameSounds>>,
+  settings: Res<SettingsRes>,
   world: Option<Res<app::GameWorld>>,
 ) {
   let player_id = world.as_ref().map(|w| w.player().id());
@@ -42,10 +44,9 @@ fn handle_food_eaten(
     };
     spawn_eat_pop(&mut commands, event.position, color);
 
-    // Only play sound for the player, not NPCs
     if player_id == Some(event.worm_id) {
       if let Some(ref sounds) = sounds {
-        play_sfx(&mut commands, &sounds.eat);
+        play_sfx(&mut commands, &sounds.eat, &settings);
       }
     }
   }
@@ -58,12 +59,11 @@ fn handle_worm_died(
   world: Option<Res<app::GameWorld>>,
   mut shake: ResMut<ScreenShake>,
   sounds: Option<Res<GameSounds>>,
+  settings: Res<SettingsRes>,
 ) {
   for event in events.read() {
-    // Particle burst
     spawn_death_burst(&mut commands, event.position, 20, theme.orange);
 
-    // Only flash + shake + sound if the player died
     let is_player = world
       .as_ref()
       .map(|w| w.player().id() == event.worm_id)
@@ -73,7 +73,7 @@ fn handle_worm_died(
       spawn_death_flash(&mut commands, &theme);
       shake.trigger(8.0, 0.3);
       if let Some(ref sounds) = sounds {
-        play_sfx(&mut commands, &sounds.die);
+        play_sfx(&mut commands, &sounds.die, &settings);
       }
     }
   }
@@ -84,14 +84,14 @@ fn handle_boost_sound(
   mut events: EventReader<BoostEvent>,
   world: Option<Res<app::GameWorld>>,
   sounds: Option<Res<GameSounds>>,
+  settings: Res<SettingsRes>,
 ) {
   let Some(ref sounds) = sounds else { return };
   let Some(world) = world else { return };
 
   for event in events.read() {
-    // Only play sound for player's boost
     if event.started && event.worm_id == world.player().id() {
-      play_sfx(&mut commands, &sounds.boost_start);
+      play_sfx(&mut commands, &sounds.boost_start, &settings);
     }
   }
 }

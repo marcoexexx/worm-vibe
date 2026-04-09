@@ -1,6 +1,6 @@
 use app::GameWorld;
 use bevy::prelude::*;
-use bevy::utils::HashSet;
+use bevy::utils::{HashMap, HashSet};
 use domain::WormId;
 use glam::Vec2;
 
@@ -13,12 +13,14 @@ use crate::theme::GruvboxTheme;
 
 #[derive(Component)]
 pub(crate) struct WormSegmentSprite {
+  #[allow(dead_code)]
   worm_id: WormId,
+  #[allow(dead_code)]
   segment_index: usize,
 }
 
 #[derive(Component)]
-struct WormNameLabel(WormId);
+struct WormNameLabel(#[allow(dead_code)] WormId);
 
 #[derive(Component)]
 struct KingCrownSprite;
@@ -114,6 +116,12 @@ fn sync_worm_sprites(
     .map(|t| t.translation.truncate())
     .unwrap_or_default();
 
+  // Build O(1) lookup index: (worm_id, seg_index) → pool index
+  let mut pool_index: HashMap<(WormId, usize), usize> = HashMap::with_capacity(pool.entries.len());
+  for (i, entry) in pool.entries.iter().enumerate() {
+    pool_index.insert((entry.worm_id, entry.seg_index), i);
+  }
+
   // Track which (worm_id, seg_index) are still alive
   let mut alive_set: HashSet<(WormId, usize)> = HashSet::new();
 
@@ -123,6 +131,7 @@ fn sync_worm_sprites(
     update_worm_segments(
       &mut commands,
       &mut pool,
+      &pool_index,
       &mut sprite_q,
       player,
       &textures.player_head,
@@ -146,6 +155,7 @@ fn sync_worm_sprites(
     update_worm_segments(
       &mut commands,
       &mut pool,
+      &pool_index,
       &mut sprite_q,
       worm,
       &textures.heads[tex_idx],
@@ -169,9 +179,11 @@ fn sync_worm_sprites(
 }
 
 /// Update or spawn sprites for a single worm's segments.
+#[allow(clippy::too_many_arguments)]
 fn update_worm_segments(
   commands: &mut Commands,
   pool: &mut SpritePool,
+  pool_index: &HashMap<(WormId, usize), usize>,
   sprite_q: &mut Query<(&mut Transform, &mut Sprite, &mut Visibility)>,
   worm: &domain::Worm,
   head_tex: &Handle<Image>,
@@ -195,19 +207,12 @@ fn update_worm_segments(
     alive_set.insert((worm_id, i));
 
     let z = if i == 0 { z_head } else { z_seg };
-    let size = if i == 0 {
-      seg.radius() * 2.8
-    } else {
-      seg.radius() * 2.2
-    };
+    let size = if i == 0 { seg.radius() * 2.8 } else { seg.radius() * 2.2 };
     let pos3 = seg_pos.extend(z);
 
-    // Try to find existing entity in pool (linear scan — fast for typical counts)
-    if let Some(entry) = pool
-      .entries
-      .iter()
-      .find(|e| e.worm_id == worm_id && e.seg_index == i)
-    {
+    // O(1) lookup via pre-built index
+    if let Some(&pool_idx) = pool_index.get(&(worm_id, i)) {
+      let entry = &pool.entries[pool_idx];
       if let Ok((mut transform, mut sprite, mut vis)) = sprite_q.get_mut(entry.entity) {
         transform.translation = pos3;
         sprite.custom_size = Some(Vec2::splat(size));
@@ -259,14 +264,14 @@ fn sync_worm_names(
     .map(|t| t.translation.truncate())
     .unwrap_or_default();
 
-  // Build rank map (only top 10)
-  let mut ranked: Vec<(WormId, usize)> = Vec::new();
+  // Build rank map by score (consistent with leaderboard)
+  let mut ranked: Vec<(WormId, u64)> = Vec::new();
   if world.player().is_alive() {
-    ranked.push((world.player().id(), world.player().length()));
+    ranked.push((world.player().id(), world.player().score()));
   }
   for (worm, _) in world.ai_worms() {
     if worm.is_alive() {
-      ranked.push((worm.id(), worm.length()));
+      ranked.push((worm.id(), worm.score()));
     }
   }
   ranked.sort_unstable_by(|a, b| b.1.cmp(&a.1));
@@ -275,7 +280,10 @@ fn sync_worm_names(
 
   // Inline rank lookup (avoids HashMap)
   let rank_of = |id: WormId| -> Option<usize> {
-    ranked.iter().position(|(rid, _)| *rid == id).and_then(|i| if i < 10 { Some(i + 1) } else { None })
+    ranked
+      .iter()
+      .position(|(rid, _)| *rid == id)
+      .and_then(|i| if i < 10 { Some(i + 1) } else { None })
   };
 
   // Update or spawn labels for visible worms
@@ -331,6 +339,7 @@ fn sync_worm_names(
   });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn upsert_label(
   commands: &mut Commands,
   pool: &mut NamePool,
@@ -392,7 +401,7 @@ fn sync_king_crown(
     return;
   };
 
-  // Find king
+  // Find king (longest worm = biggest on screen)
   let mut king_pos: Option<Vec2> = None;
   let mut king_len = 0usize;
   if world.player().is_alive() {
@@ -415,10 +424,17 @@ fn sync_king_crown(
 
   let crown_pos = Vec3::new(pos.x, pos.y + 40.0, 25.0);
 
-  if let Ok((mut transform, mut vis)) = crown_q.get_single_mut() {
+  let mut iter = crown_q.iter_mut();
+  if let Some((mut transform, mut vis)) = iter.next() {
+    // Update the one crown
     transform.translation = crown_pos;
     *vis = Visibility::Inherited;
+    // Despawn any duplicates
+    for (_, mut vis) in iter {
+      *vis = Visibility::Hidden;
+    }
   } else {
+    // No crown entity yet — spawn one
     commands.spawn((
       Sprite {
         image: asset_server.load("textures/crown.png"),

@@ -1,9 +1,9 @@
 use bevy::input::touch::TouchInput;
 use bevy::prelude::*;
-use domain::MovementIntent;
+use domain::{ControlMode, MovementIntent};
 use glam::Vec2;
 
-use crate::CurrentIntent;
+use crate::{ActiveControlMode, CurrentIntent};
 
 const DEAD_ZONE: f32 = 10.0;
 const JOYSTICK_RADIUS: f32 = 80.0;
@@ -40,8 +40,12 @@ impl Plugin for TouchInputPlugin {
   fn build(&self, app: &mut App) {
     app
       .init_resource::<VirtualJoystick>()
-      .add_systems(PreUpdate, read_touch);
+      .add_systems(PreUpdate, read_touch.run_if(is_joystick_mode));
   }
+}
+
+fn is_joystick_mode(mode: Res<ActiveControlMode>) -> bool {
+  mode.0 == ControlMode::Joystick
 }
 
 fn read_touch(
@@ -50,9 +54,8 @@ fn read_touch(
   mut intent: ResMut<CurrentIntent>,
   windows: Query<&Window>,
 ) {
-  let window = match windows.get_single() {
-    Ok(w) => w,
-    Err(_) => return,
+  let Ok(window) = windows.get_single() else {
+    return;
   };
   let half_width = window.width() / 2.0;
 

@@ -9,6 +9,7 @@ impl Plugin for ButtonHoverPlugin {
   }
 }
 
+#[allow(clippy::type_complexity)]
 fn handle_button_hover(
   mut buttons: Query<(&Interaction, &mut BackgroundColor, &Children), (Changed<Interaction>, With<Button>)>,
   mut texts: Query<&mut TextColor>,

@@ -137,42 +137,43 @@ fn update_leaderboard(
     return;
   };
 
-  // Collect all alive worms: (name, score, is_player)
-  let mut worms: Vec<(&str, u64, bool)> = Vec::new();
+  // Collect all alive worms: (name, score, length, is_player)
+  let mut worms: Vec<(&str, u64, usize, bool)> = Vec::new();
   let player = world.player();
   if player.is_alive() {
-    worms.push((player.name(), player.score(), true));
+    worms.push((player.name(), player.score(), player.length(), true));
   }
   for (worm, _) in world.ai_worms() {
     if worm.is_alive() {
-      worms.push((worm.name(), worm.score(), false));
+      worms.push((worm.name(), worm.score(), worm.length(), false));
     }
   }
+
+  // Find king (longest worm)
+  let king_name = worms.iter().max_by_key(|w| w.2).map(|w| w.0);
+
+  // Sort by score for leaderboard ranking
   worms.sort_by(|a, b| b.1.cmp(&a.1));
 
-  let player_rank = worms.iter().position(|w| w.2).map(|i| i + 1);
-  let player_in_top10 = player_rank.map_or(false, |r| r <= 10);
+  let player_rank = worms.iter().position(|w| w.3).map(|i| i + 1);
+  let player_in_top10 = player_rank.is_some_and(|r| r <= 10);
 
   // Build display lines: (text, color, show_crown)
   let mut lines: Vec<(String, Color, bool)> = Vec::with_capacity(MAX_SLOTS);
 
   let top_count = worms.len().min(10);
-  for i in 0..top_count {
-    let (name, score, is_player) = worms[i];
+  for (i, &(name, score, _len, is_player)) in worms[..top_count].iter().enumerate() {
     let rank = i + 1;
+    let is_king = king_name == Some(name);
     let ptr = if is_player { "> " } else { "  " };
     let color = if is_player {
       theme.green
-    } else if rank == 1 {
+    } else if is_king {
       theme.yellow
     } else {
       theme.fg.with_alpha(0.7)
     };
-    lines.push((
-      format!("{}{:>2} {:<10} {}", ptr, rank, name, score),
-      color,
-      rank == 1,
-    ));
+    lines.push((format!("{}{:>2} {:<10} {}", ptr, rank, name, score), color, is_king));
   }
 
   if !player_in_top10 {

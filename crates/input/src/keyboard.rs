@@ -1,15 +1,19 @@
 use bevy::prelude::*;
-use domain::MovementIntent;
+use domain::{ControlMode, MovementIntent};
 use glam::Vec2;
 
-use crate::CurrentIntent;
+use crate::{ActiveControlMode, CurrentIntent};
 
 pub struct KeyboardInputPlugin;
 
 impl Plugin for KeyboardInputPlugin {
   fn build(&self, app: &mut App) {
-    app.add_systems(PreUpdate, read_keyboard);
+    app.add_systems(PreUpdate, read_keyboard.run_if(is_arrow_mode));
   }
+}
+
+fn is_arrow_mode(mode: Res<ActiveControlMode>) -> bool {
+  mode.0 == ControlMode::Arrow
 }
 
 fn read_keyboard(keys: Res<ButtonInput<KeyCode>>, mut intent: ResMut<CurrentIntent>) {
