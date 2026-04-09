@@ -32,8 +32,13 @@
     import init from './wormzone.js';
 
     init().then(() => {
-      document.getElementById('loading').remove();
+      document.getElementById('loading')?.remove();
     }).catch(err => {
+      // Bevy uses exceptions for control flow in WASM — this is normal
+      if (err.message?.includes("Using exceptions for control flow")) {
+        document.getElementById('loading')?.remove();
+        return;
+      }
       document.getElementById('loading').textContent = 'Failed to load: ' + err;
       console.error(err);
     });
