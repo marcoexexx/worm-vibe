@@ -17,4 +17,5 @@ rand = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"
-getrandom = { workspace = true }
+getrandom_02 = { workspace = true }
+getrandom_03 = { workspace = true }
