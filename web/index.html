@@ -2,11 +2,29 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="description" content="WORMZONE — A slither.io-inspired snake game built with Rust and Bevy. Play free in your browser." />
+  <meta name="author" content="Aung Koko Lwin" />
+  <meta name="theme-color" content="#1d2021" />
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="WORMZONE" />
+  <meta property="og:description" content="A slither.io-inspired snake game. Grow, boost, eliminate. Play free in browser." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://marcoexexx.github.io/worm-vibe/" />
+
   <title>WORMZONE</title>
   <style>
-    * { margin: 0; padding: 0; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: #1d2021; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #1d2021;
+      touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
     canvas {
       display: block;
       width: 100vw;
@@ -16,30 +34,59 @@
       position: fixed;
       inset: 0;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
+      gap: 16px;
       color: #ebdbb2;
-      font-family: monospace;
-      font-size: 1.5rem;
+      font-family: 'JetBrains Mono', monospace, sans-serif;
       background: #1d2021;
       z-index: 10;
     }
+    #loading h1 {
+      font-size: 2.5rem;
+      color: #98971a;
+      letter-spacing: 4px;
+    }
+    #loading p {
+      font-size: 0.9rem;
+      color: #928374;
+    }
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid #32302f;
+      border-top-color: #98971a;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
-  <div id="loading">Loading WORMZONE...</div>
+  <div id="loading">
+    <h1>WORMZONE</h1>
+    <div class="spinner"></div>
+    <p>Loading game...</p>
+    <p style="font-size: 0.7rem; color: #504945;">Built with Rust + Bevy | MIT License</p>
+  </div>
   <script type="module">
     import init from './wormzone.js';
 
     init().then(() => {
       document.getElementById('loading')?.remove();
     }).catch(err => {
-      // Bevy uses exceptions for control flow in WASM — this is normal
       if (err.message?.includes("Using exceptions for control flow")) {
         document.getElementById('loading')?.remove();
         return;
       }
-      document.getElementById('loading').textContent = 'Failed to load: ' + err;
+      const el = document.getElementById('loading');
+      if (el) {
+        el.innerHTML = `
+          <h1>WORMZONE</h1>
+          <p style="color: #cc241d;">Failed to load</p>
+          <p style="font-size: 0.8rem; max-width: 400px; text-align: center;">${err}</p>
+        `;
+      }
       console.error(err);
     });
   </script>
