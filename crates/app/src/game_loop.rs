@@ -391,12 +391,34 @@ fn build_perception(
     }
   }
 
+  // Collect nearby body segments from other worms (short range for collision avoidance)
+  let seg_range_sq = 80.0 * 80.0;
+  let mut nearby_segments = Vec::new();
+  if player.is_alive() && player.id() != worm.id() {
+    for seg in player.segments().iter().skip(3) {
+      if seg.position().distance_squared(pos) < seg_range_sq {
+        nearby_segments.push(seg.position());
+      }
+    }
+  }
+  for (other, _) in ai_worms {
+    if other.id() == worm.id() || !other.is_alive() {
+      continue;
+    }
+    for seg in other.segments().iter().skip(3) {
+      if seg.position().distance_squared(pos) < seg_range_sq {
+        nearby_segments.push(seg.position());
+      }
+    }
+  }
+
   AiPerception {
     self_position: pos,
     self_heading: worm.heading(),
     self_length: worm.length(),
     nearby_food,
     nearby_worms,
+    nearby_segments,
     arena_half_extents: half_extents,
   }
 }

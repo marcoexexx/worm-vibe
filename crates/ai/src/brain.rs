@@ -115,7 +115,7 @@ impl BasicAiBrain {
     if self.tuning.predicts_movement {
       // Predict where prey will be in ~0.5 seconds
       let prey_dir = Vec2::new(prey.heading.cos(), prey.heading.sin());
-      let predicted = prey.position + prey_dir * 100.0;
+      let predicted = prey.position + prey_dir * self.tuning.intercept_lookahead;
       steering_seek(perception.self_position, predicted)
     } else {
       steering_seek(perception.self_position, prey.position)
@@ -180,6 +180,27 @@ impl AiBrain for BasicAiBrain {
           decisions.push(AiDecision::TurnTo(heading));
         }
       }
+    }
+
+    // Avoid nearby body segments (override hunting if about to crash)
+    let self_dir = Vec2::new(perception.self_heading.cos(), perception.self_heading.sin());
+    let danger_dist = 60.0;
+    let mut segment_threat: Option<Vec2> = None;
+    for &seg_pos in &perception.nearby_segments {
+      let to_seg = seg_pos - perception.self_position;
+      let dist = to_seg.length();
+      if dist < danger_dist && dist > 1.0 {
+        let dot = to_seg.normalize().dot(self_dir);
+        if dot > 0.3 {
+          segment_threat = Some(seg_pos);
+          break;
+        }
+      }
+    }
+    if let Some(threat_pos) = segment_threat {
+      decisions.clear();
+      let flee = steering_flee(perception.self_position, threat_pos);
+      decisions.push(AiDecision::TurnTo(flee));
     }
 
     // Avoid arena boundaries

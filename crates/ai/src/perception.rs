@@ -8,6 +8,8 @@ pub struct AiPerception {
   pub self_length: usize,
   pub nearby_food: Vec<(Vec2, FoodKind)>,
   pub nearby_worms: Vec<NearbyWorm>,
+  /// Body segments of other worms that are close and in front of us.
+  pub nearby_segments: Vec<Vec2>,
   pub arena_half_extents: Vec2,
 }
 
